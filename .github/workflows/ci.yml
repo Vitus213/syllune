@@ -16,9 +16,6 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v17
 
-      - name: Cache Nix
-        uses: DeterminateSystems/magic-nix-cache-action@v13
-
       - name: Ruff
         run: nix develop -c ruff check .
 
