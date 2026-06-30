@@ -23,7 +23,9 @@ def run_checks(config: Config) -> list[Check]:
         _command_check("wtype", config.inject.wtype_command),
         _command_check("wl-copy", config.inject.wl_copy_command),
         Check("sensevoice model.onnx", sensevoice.model_path.exists(), str(sensevoice.model_path)),
-        Check("sensevoice tokens.txt", sensevoice.tokens_path.exists(), str(sensevoice.tokens_path)),
+        Check(
+            "sensevoice tokens.txt", sensevoice.tokens_path.exists(), str(sensevoice.tokens_path)
+        ),
         Check(
             "qwen3-asr conv_frontend.onnx",
             qwen3.conv_frontend_path.exists(),

@@ -13,4 +13,3 @@ def test_apply_snippets_replaces_spoken_phrases() -> None:
     text = apply_snippets("我的邮箱 请发给 NixOS", {"我的邮箱": "me@example.com"})
 
     assert text == "me@example.com 请发给 NixOS"
-

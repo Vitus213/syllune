@@ -17,6 +17,12 @@
       let
         pkgs = import nixpkgs { inherit system; };
         python = pkgs.python312;
+        pythonEnv = python.withPackages (
+          ps: with ps; [
+            pytest
+            pytest-cov
+          ]
+        );
         type4me-linux = python.pkgs.buildPythonApplication {
           pname = "type4me-linux";
           version = "0.1.0";
@@ -30,6 +36,7 @@
 
           nativeCheckInputs = with python.pkgs; [
             pytest
+            pytest-cov
           ];
 
           checkPhase = ''
@@ -69,9 +76,9 @@
 
         devShells.default = pkgs.mkShell {
           packages = [
-            python
-            python.pkgs.pytest
+            pythonEnv
             python.pkgs.ruff
+            pkgs.pre-commit
             pkgs.just
             pkgs.nixfmt
             pkgs.pipewire

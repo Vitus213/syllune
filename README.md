@@ -24,6 +24,22 @@ nix run . -- transcribe /path/to/audio.wav --backend fake
 nix run . -- inject "你好"
 ```
 
+## 测试和质量门禁
+
+默认测试包含单元测试、CLI 集成测试和端到端测试。集成/E2E 测试会用临时 fake 命令模拟
+`pw-record`、`sherpa-onnx-offline`、`wtype` 和 `wl-copy`，所以不需要麦克风、Wayland 会话、GPU
+或真实模型文件。
+
+```bash
+nix develop -c python -m pytest
+nix develop -c ruff check .
+nix develop -c ruff format --check .
+nix develop -c pre-commit run --all-files
+```
+
+`pytest` 默认启用覆盖率门禁，要求 `type4me_linux` 包整体覆盖率不低于 90%。GitHub Actions 会运行
+同一组 lint、测试和 `nix flake check`。
+
 真实 SenseVoice 后端需要模型目录包含：
 
 ```text

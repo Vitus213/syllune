@@ -72,8 +72,7 @@ def _doctor(args: argparse.Namespace, config: Config) -> int:
         command_checks = [
             check
             for check in checks
-            if not check.name.startswith("sensevoice ")
-            and not check.name.startswith("qwen3-asr ")
+            if not check.name.startswith("sensevoice ") and not check.name.startswith("qwen3-asr ")
         ]
         return 0 if all(check.ok for check in command_checks) else 1
     return 0 if all(check.ok for check in checks) else 1

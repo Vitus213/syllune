@@ -8,9 +8,12 @@ version = "0.1.0"
 description = "Linux voice input pipeline inspired by Type4Me, packaged with Nix."
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "type4me-linux contributors" }]
 dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov", "ruff", "pre-commit"]
 
 [project.scripts]
 type4me-linux = "type4me_linux.cli:main"
@@ -21,9 +24,20 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-q"
+addopts = "-q --cov=type4me_linux --cov-report=term-missing --cov-fail-under=90"
+markers = [
+    "integration: tests that exercise CLI integration with fake external commands",
+    "e2e: end-to-end CLI flow tests using fake external Linux tools",
+]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
 
+[tool.coverage.run]
+branch = true
+source = ["type4me_linux"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false

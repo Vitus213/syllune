@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Unit, integration, e2e, and flake checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v17
+
+      - name: Cache Nix
+        uses: DeterminateSystems/magic-nix-cache-action@v13
+
+      - name: Ruff
+        run: nix develop -c ruff check .
+
+      - name: Ruff format
+        run: nix develop -c ruff format --check .
+
+      - name: Tests with coverage
+        run: nix develop -c python -m pytest
+
+      - name: Flake check
+        run: nix flake check -L

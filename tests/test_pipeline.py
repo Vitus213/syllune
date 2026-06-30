@@ -29,4 +29,3 @@ def test_pipeline_applies_snippets_before_injection(tmp_path: Path) -> None:
 
     assert result.recognition.text == "me@example.com"
     assert injector.texts == ["me@example.com"]
-

@@ -31,4 +31,3 @@ class Recorder:
             check=True,
         )
         return output
-

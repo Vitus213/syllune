@@ -48,4 +48,3 @@ class VoiceInputPipeline:
         )
         injection = self.injector.inject(text) if inject else None
         return PipelineResult(recognition=recognition, injection=injection)
-

@@ -3,16 +3,23 @@ from __future__ import annotations
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 
 from .config import Config
+from .inject import TextInjector
 from .pipeline import VoiceInputPipeline
+from .providers import ASRProvider
 
 
 class VoiceInputServer(ThreadingHTTPServer):
-    def __init__(self, server_address: tuple[str, int], config: Config) -> None:
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        config: Config,
+        provider: ASRProvider | None = None,
+        injector: TextInjector | None = None,
+    ) -> None:
         self.config = config
-        self.pipeline = VoiceInputPipeline(config)
+        self.pipeline = VoiceInputPipeline(config, provider=provider, injector=injector)
         super().__init__(server_address, Handler)
 
 
@@ -66,6 +73,18 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def serve(config: Config) -> None:
-    server = VoiceInputServer((config.daemon.host, config.daemon.port), config)
+    server = make_server(config)
     server.serve_forever()
 
+
+def make_server(
+    config: Config,
+    provider: ASRProvider | None = None,
+    injector: TextInjector | None = None,
+) -> VoiceInputServer:
+    return VoiceInputServer(
+        (config.daemon.host, config.daemon.port),
+        config,
+        provider=provider,
+        injector=injector,
+    )

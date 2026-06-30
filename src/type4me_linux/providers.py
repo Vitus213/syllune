@@ -185,7 +185,9 @@ class HybridProvider:
         try:
             final = self.qwen.transcribe(wav_path, draft_text=draft.text)
         except Exception:
-            return RecognitionResult(text=draft.text, backend="hybrid-fallback", draft_text=draft.text)
+            return RecognitionResult(
+                text=draft.text, backend="hybrid-fallback", draft_text=draft.text
+            )
         return RecognitionResult(text=final.text, backend="hybrid", draft_text=draft.text)
 
 

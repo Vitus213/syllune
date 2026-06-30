@@ -28,4 +28,3 @@ def test_injector_falls_back_to_clipboard(monkeypatch: pytest.MonkeyPatch) -> No
     assert result.ok
     assert result.method == "clipboard"
     assert calls == [["wtype", "你好"], ["wl-copy"]]
-

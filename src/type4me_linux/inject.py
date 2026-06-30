@@ -60,4 +60,3 @@ class TextInjector:
         except Exception as exc:
             return InjectionResult("clipboard", False, str(exc))
         return InjectionResult("clipboard", True)
-
