@@ -19,8 +19,12 @@ def default_config_path() -> Path:
     return _xdg_config_home() / "type4me-linux" / "config.toml"
 
 
-def default_model_dir() -> Path:
+def default_sensevoice_model_dir() -> Path:
     return _xdg_data_home() / "type4me-linux" / "models" / "sensevoice-small"
+
+
+def default_qwen3_model_dir() -> Path:
+    return _xdg_data_home() / "type4me-linux" / "models" / "qwen3-asr-0.6b"
 
 
 def expand_path(value: str | Path) -> Path:
@@ -31,8 +35,10 @@ def expand_path(value: str | Path) -> Path:
 class ASRConfig:
     backend: str = "sensevoice"
     language: str = "zh"
-    model_dir: Path = field(default_factory=default_model_dir)
+    sensevoice_model_dir: Path = field(default_factory=default_sensevoice_model_dir)
+    qwen3_model_dir: Path = field(default_factory=default_qwen3_model_dir)
     sensevoice_command: str = "sherpa-onnx-offline"
+    qwen3_command: str = "sherpa-onnx-offline"
     qwen_endpoint: str = "http://127.0.0.1:8765/transcribe"
     use_qwen_final: bool = False
     provider: str = "cpu"
@@ -93,10 +99,28 @@ def config_from_mapping(raw: dict[str, Any]) -> Config:
 
 
 def _asr_config(raw: dict[str, Any]) -> ASRConfig:
-    cfg = _dataclass_from_mapping(ASRConfig(), raw)
-    model_dir = expand_path(raw["model_dir"]) if "model_dir" in raw else cfg.model_dir
+    normalized = dict(raw)
+    legacy_model_dir = normalized.pop("model_dir", None)
+    cfg = _dataclass_from_mapping(ASRConfig(), normalized)
+    sensevoice_model_dir = (
+        expand_path(normalized["sensevoice_model_dir"])
+        if "sensevoice_model_dir" in normalized
+        else expand_path(legacy_model_dir)
+        if legacy_model_dir is not None
+        else cfg.sensevoice_model_dir
+    )
+    qwen3_model_dir = (
+        expand_path(normalized["qwen3_model_dir"])
+        if "qwen3_model_dir" in normalized
+        else cfg.qwen3_model_dir
+    )
     hotwords = tuple(str(item) for item in raw.get("hotwords", cfg.hotwords))
-    return replace(cfg, model_dir=model_dir, hotwords=hotwords)
+    return replace(
+        cfg,
+        sensevoice_model_dir=sensevoice_model_dir,
+        qwen3_model_dir=qwen3_model_dir,
+        hotwords=hotwords,
+    )
 
 
 def _dataclass_from_mapping(instance: Any, raw: dict[str, Any]) -> Any:
@@ -108,4 +132,3 @@ def _dataclass_from_mapping(instance: Any, raw: dict[str, Any]) -> Any:
         joined = ", ".join(unknown)
         raise ValueError(f"unknown {type(instance).__name__} keys: {joined}")
     return replace(instance, **raw)
-

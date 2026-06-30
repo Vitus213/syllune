@@ -48,10 +48,13 @@ class SenseVoiceProvider:
         return RecognitionResult(text=parse_sherpa_output(completed.stdout), backend="sensevoice")
 
     def _ensure_model_files(self) -> None:
-        missing = [path for path in [self.model_path, self.tokens_path] if not path.exists()]
+        missing = self.missing_model_files()
         if missing:
             joined = ", ".join(str(path) for path in missing)
             raise FileNotFoundError(f"SenseVoice model files missing: {joined}")
+
+    def missing_model_files(self) -> list[Path]:
+        return [path for path in [self.model_path, self.tokens_path] if not path.exists()]
 
     def _command(self, wav_path: Path) -> list[str]:
         return [
@@ -69,11 +72,78 @@ class SenseVoiceProvider:
 
     @property
     def model_path(self) -> Path:
-        return self.config.model_dir / "model.onnx"
+        return self.config.sensevoice_model_dir / "model.onnx"
 
     @property
     def tokens_path(self) -> Path:
-        return self.config.model_dir / "tokens.txt"
+        return self.config.sensevoice_model_dir / "tokens.txt"
+
+
+class Qwen3SherpaProvider:
+    def __init__(self, config: ASRConfig) -> None:
+        self.config = config
+
+    def transcribe(self, wav_path: Path) -> RecognitionResult:
+        self._ensure_model_files()
+        completed = subprocess.run(
+            self._command(wav_path),
+            check=True,
+            text=True,
+            capture_output=True,
+            timeout=self.config.timeout_seconds,
+        )
+        text = parse_sherpa_output(completed.stdout)
+        return RecognitionResult(
+            text=sanitize_qwen_output(text, self.config.hotwords),
+            backend="qwen3-sherpa",
+        )
+
+    def _ensure_model_files(self) -> None:
+        missing = self.missing_model_files()
+        if missing:
+            joined = ", ".join(str(path) for path in missing)
+            raise FileNotFoundError(f"Qwen3-ASR model files missing: {joined}")
+
+    def missing_model_files(self) -> list[Path]:
+        required = [
+            self.conv_frontend_path,
+            self.encoder_path,
+            self.decoder_path,
+            self.tokenizer_path,
+        ]
+        return [path for path in required if not path.exists()]
+
+    def _command(self, wav_path: Path) -> list[str]:
+        command = [
+            self.config.qwen3_command,
+            f"--qwen3-asr-conv-frontend={self.conv_frontend_path}",
+            f"--qwen3-asr-encoder={self.encoder_path}",
+            f"--qwen3-asr-decoder={self.decoder_path}",
+            f"--qwen3-asr-tokenizer={self.tokenizer_path}",
+            f"--provider={self.config.provider}",
+            f"--num-threads={self.config.num_threads}",
+            "--print-args=false",
+        ]
+        if self.config.hotwords:
+            command.append(f"--qwen3-asr-hotwords={','.join(self.config.hotwords)}")
+        command.append(str(wav_path))
+        return command
+
+    @property
+    def conv_frontend_path(self) -> Path:
+        return self.config.qwen3_model_dir / "conv_frontend.onnx"
+
+    @property
+    def encoder_path(self) -> Path:
+        return self.config.qwen3_model_dir / "encoder.onnx"
+
+    @property
+    def decoder_path(self) -> Path:
+        return self.config.qwen3_model_dir / "decoder.onnx"
+
+    @property
+    def tokenizer_path(self) -> Path:
+        return self.config.qwen3_model_dir / "tokenizer"
 
 
 class Qwen3ASRClient:
@@ -106,7 +176,7 @@ class Qwen3ASRClient:
 
 
 class HybridProvider:
-    def __init__(self, sensevoice: ASRProvider, qwen: Qwen3ASRClient) -> None:
+    def __init__(self, sensevoice: ASRProvider, qwen: ASRProvider | Qwen3ASRClient) -> None:
         self.sensevoice = sensevoice
         self.qwen = qwen
 
@@ -127,8 +197,12 @@ def create_provider(config: ASRConfig) -> ASRProvider:
         return SenseVoiceProvider(config)
     if backend == "qwen3-asr":
         return _QwenProvider(config)
+    if backend == "qwen3-sherpa":
+        return Qwen3SherpaProvider(config)
     if backend == "hybrid":
-        return HybridProvider(SenseVoiceProvider(config), Qwen3ASRClient(config))
+        qwen: ASRProvider | Qwen3ASRClient
+        qwen = Qwen3ASRClient(config) if config.use_qwen_final else Qwen3SherpaProvider(config)
+        return HybridProvider(SenseVoiceProvider(config), qwen)
     raise ValueError(f"unsupported ASR backend: {config.backend}")
 
 
@@ -158,4 +232,3 @@ def parse_sherpa_output(stdout: str) -> str:
                 return line.split(":", 1)[1].strip()
             return line
     return lines[-1]
-

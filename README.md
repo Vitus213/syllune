@@ -7,7 +7,7 @@ Linux 本地语音输入工具骨架，参考 Type4Me 的 SenseVoice + Qwen3-ASR
 - 通过 Nix 安装一个 `type4me-linux` 命令。
 - 用 `pw-record` 录音，默认 16 kHz mono PCM wav。
 - 用 `sherpa-onnx-offline` 跑 SenseVoice ONNX 模型做快速识别。
-- 可选调用本机 Qwen3-ASR HTTP 服务做最终校准。
+- 默认用 `sherpa-onnx-offline` 跑 Qwen3-ASR ONNX 模型做最终校准，也可切到本机 Qwen3-ASR HTTP 服务。
 - 用 `wtype` 注入文字，失败时回退到 `wl-copy`。
 - 没有模型时也能用 fake 后端跑完测试和状态机。
 
@@ -37,7 +37,22 @@ tokens.txt
 $XDG_DATA_HOME/type4me-linux/models/sensevoice-small
 ```
 
-也可以在配置中覆盖。
+真实 Qwen3-ASR sherpa 后端需要模型目录包含：
+
+```text
+conv_frontend.onnx
+encoder.onnx
+decoder.onnx
+tokenizer/
+```
+
+默认 Qwen3-ASR 模型目录是：
+
+```text
+$XDG_DATA_HOME/type4me-linux/models/qwen3-asr-0.6b
+```
+
+两个模型目录都可以在配置中覆盖。`doctor --allow-missing-models` 可用于验证 Nix 安装和运行时命令，不要求模型已经下载。
 
 ## 配置
 
@@ -53,8 +68,9 @@ $XDG_CONFIG_HOME/type4me-linux/config.toml
 [asr]
 backend = "hybrid"
 language = "zh"
-model_dir = "~/.local/share/type4me-linux/models/sensevoice-small"
-use_qwen_final = true
+sensevoice_model_dir = "~/.local/share/type4me-linux/models/sensevoice-small"
+qwen3_model_dir = "~/.local/share/type4me-linux/models/qwen3-asr-0.6b"
+use_qwen_final = false
 qwen_endpoint = "http://127.0.0.1:8765/transcribe"
 hotwords = ["Qwen3-ASR", "SenseVoice", "NixOS"]
 
@@ -99,8 +115,9 @@ Home Manager 可使用仓库提供的模块：
             settings.asr = {
               backend = "hybrid";
               language = "zh";
-              use_qwen_final = true;
-              qwen_endpoint = "http://127.0.0.1:8765/transcribe";
+              use_qwen_final = false;
+              sensevoice_model_dir = "~/.local/share/type4me-linux/models/sensevoice-small";
+              qwen3_model_dir = "~/.local/share/type4me-linux/models/qwen3-asr-0.6b";
             };
           };
         }

@@ -28,7 +28,10 @@ def main(argv: list[str] | None = None) -> int:
 
     transcribe = sub.add_parser("transcribe", help="Transcribe a wav file")
     transcribe.add_argument("wav", type=Path)
-    transcribe.add_argument("--backend", choices=["fake", "sensevoice", "qwen3-asr", "hybrid"])
+    transcribe.add_argument(
+        "--backend",
+        choices=["fake", "sensevoice", "qwen3-sherpa", "qwen3-asr", "hybrid"],
+    )
     transcribe.add_argument("--inject", action="store_true", help="Inject recognized text")
     transcribe.add_argument("--json", action="store_true", help="Print structured JSON")
     transcribe.set_defaults(func=_transcribe)
@@ -39,7 +42,10 @@ def main(argv: list[str] | None = None) -> int:
 
     record = sub.add_parser("record", help="Record fixed-duration audio, transcribe, and inject")
     record.add_argument("--seconds", type=float, default=5.0)
-    record.add_argument("--backend", choices=["fake", "sensevoice", "qwen3-asr", "hybrid"])
+    record.add_argument(
+        "--backend",
+        choices=["fake", "sensevoice", "qwen3-sherpa", "qwen3-asr", "hybrid"],
+    )
     record.add_argument("--no-inject", action="store_true")
     record.set_defaults(func=_record)
 
@@ -63,7 +69,12 @@ def _doctor(args: argparse.Namespace, config: Config) -> int:
         marker = "ok" if check.ok else "missing"
         print(f"{marker:7} {check.name}: {check.detail}")
     if args.allow_missing_models:
-        command_checks = [check for check in checks if not check.name.startswith("sensevoice ")]
+        command_checks = [
+            check
+            for check in checks
+            if not check.name.startswith("sensevoice ")
+            and not check.name.startswith("qwen3-asr ")
+        ]
         return 0 if all(check.ok for check in command_checks) else 1
     return 0 if all(check.ok for check in checks) else 1
 

@@ -10,6 +10,7 @@ def test_doctor_can_allow_missing_models(capsys, monkeypatch) -> None:  # type: 
         lambda config: [
             Check("wtype", True, "/bin/wtype"),
             Check("sensevoice model.onnx", False, "/missing/model.onnx"),
+            Check("qwen3-asr encoder.onnx", False, "/missing/encoder.onnx"),
         ],
     )
 
