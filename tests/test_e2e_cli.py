@@ -21,7 +21,7 @@ def test_record_to_injection_end_to_end_with_fake_runtime(
             "--seconds",
             "0.25",
             "--backend",
-            "sensevoice",
+            "fake",
         ]
     )
 
@@ -33,7 +33,3 @@ def test_record_to_injection_end_to_end_with_fake_runtime(
     assert "--rate\n16000" in recorder_args
     assert "--channels\n1" in recorder_args
     assert "--duration\n0.25" in recorder_args
-
-    sherpa_args = (fake_runtime / "logs" / "sherpa.args").read_text(encoding="utf-8")
-    assert "--sense-voice-language=zh" in sherpa_args
-    assert "type4me-linux-" in sherpa_args

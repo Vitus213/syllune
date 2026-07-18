@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Type4Me
+GenericName=语音输入
+Comment=使用本地语音识别进行听写和文本输入
+Exec=type4me-linux gui
+Icon=audio-input-microphone-symbolic
+Terminal=false
+Categories=Utility;
+Keywords=语音;听写;输入;转写;
+StartupNotify=true
+X-GNOME-UsesNotifications=true

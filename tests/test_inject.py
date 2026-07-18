@@ -28,3 +28,25 @@ def test_injector_falls_back_to_clipboard(monkeypatch: pytest.MonkeyPatch) -> No
     assert result.ok
     assert result.method == "clipboard"
     assert calls == [["wtype", "你好"], ["wl-copy"]]
+
+
+@pytest.mark.parametrize(
+    ("config", "expected_method", "expected_message"),
+    [
+        (InjectConfig(clipboard_fallback=False), "wtype", "未找到 wtype。"),
+        (InjectConfig(prefer="clipboard"), "clipboard", "未找到 wl-copy。"),
+    ],
+)
+def test_injector_localizes_missing_command_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    config: InjectConfig,
+    expected_method: str,
+    expected_message: str,
+) -> None:
+    monkeypatch.setattr("type4me_linux.inject.shutil.which", lambda _command: None)
+
+    result = TextInjector(config).inject("你好")
+
+    assert result.method == expected_method
+    assert not result.ok
+    assert result.message == expected_message

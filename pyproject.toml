@@ -5,11 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "type4me-linux"
 version = "0.1.0"
-description = "Linux voice input pipeline inspired by Type4Me, packaged with Nix."
+description = "受 Type4Me 启发、通过 Nix 打包的 Linux 语音输入应用。"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
-authors = [{ name = "type4me-linux contributors" }]
+authors = [{ name = "type4me-linux 贡献者" }]
 dependencies = []
 
 [project.optional-dependencies]
@@ -26,13 +26,17 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q --cov=type4me_linux --cov-report=term-missing --cov-fail-under=90"
 markers = [
-    "integration: tests that exercise CLI integration with fake external commands",
-    "e2e: end-to-end CLI flow tests using fake external Linux tools",
+    "integration: 使用伪造外部命令的 CLI 集成测试",
+    "e2e: 使用伪造 Linux 外部工具的端到端 CLI 流程测试",
 ]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint.per-file-ignores]
+"src/type4me_linux/desktop.py" = ["E402"]
+"tests/test_desktop_view.py" = ["E402"]
 
 [tool.coverage.run]
 branch = true

@@ -32,7 +32,7 @@ class TextInjector:
 
     def _wtype(self, text: str) -> InjectionResult:
         if shutil.which(self.config.wtype_command) is None:
-            return InjectionResult("wtype", False, "wtype not found")
+            return InjectionResult("wtype", False, "未找到 wtype。")
         try:
             self.runner(
                 [self.config.wtype_command, text],
@@ -47,7 +47,7 @@ class TextInjector:
 
     def _clipboard(self, text: str) -> InjectionResult:
         if shutil.which(self.config.wl_copy_command) is None:
-            return InjectionResult("clipboard", False, "wl-copy not found")
+            return InjectionResult("clipboard", False, "未找到 wl-copy。")
         try:
             self.runner(
                 [self.config.wl_copy_command],

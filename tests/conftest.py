@@ -37,23 +37,6 @@ def fake_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         """,
     )
     _write_executable(
-        bin_dir / "sherpa-onnx-offline",
-        f"""\
-        #!{sys.executable}
-        from pathlib import Path
-        import json
-        import os
-        import sys
-
-        Path(os.environ["TYPE4ME_FAKE_LOG_DIR"], "sherpa.args").write_text(
-            "\\n".join(sys.argv[1:]),
-            encoding="utf-8",
-        )
-        text = os.environ.get("TYPE4ME_FAKE_ASR_TEXT", "我的邮箱")
-        print(json.dumps({{"text": text}}, ensure_ascii=False))
-        """,
-    )
-    _write_executable(
         bin_dir / "wtype",
         f"""\
         #!{sys.executable}
@@ -81,40 +64,69 @@ def fake_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         )
         """,
     )
+    _write_executable(
+        bin_dir / "wl-paste",
+        f"""\
+        #!{sys.executable}
+        import sys
+
+        if "--primary" in sys.argv:
+            print("", end="")
+        else:
+            print("", end="")
+        """,
+    )
 
     monkeypatch.setenv("TYPE4ME_FAKE_LOG_DIR", str(log_dir))
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for variable, name in (
+        ("XDG_CONFIG_HOME", "config"),
+        ("XDG_DATA_HOME", "data"),
+        ("XDG_CACHE_HOME", "cache"),
+        ("XDG_STATE_HOME", "state"),
+        ("XDG_RUNTIME_DIR", "runtime"),
+    ):
+        root = tmp_path / name
+        root.mkdir()
+        monkeypatch.setenv(variable, str(root))
     return tmp_path
 
 
 @pytest.fixture
 def fake_config(fake_runtime: Path) -> Path:
-    sensevoice_dir = fake_runtime / "models" / "sensevoice"
-    sensevoice_dir.mkdir(parents=True)
-    (sensevoice_dir / "model.onnx").write_text("model", encoding="utf-8")
-    (sensevoice_dir / "tokens.txt").write_text("tokens", encoding="utf-8")
-
-    qwen_dir = fake_runtime / "models" / "qwen3"
-    qwen_dir.mkdir(parents=True)
-    for name in ["conv_frontend.onnx", "encoder.onnx", "decoder.onnx"]:
-        (qwen_dir / name).write_text(name, encoding="utf-8")
-    (qwen_dir / "tokenizer").mkdir()
+    vocabulary_dir = fake_runtime / "data" / "type4me-linux" / "vocabulary"
+    vocabulary_dir.mkdir(parents=True)
+    (vocabulary_dir / "hotwords.json").write_text("[]", encoding="utf-8")
+    (vocabulary_dir / "snippets.json").write_text(
+        '{"测试语音输入": "me@example.com"}', encoding="utf-8"
+    )
 
     bin_dir = fake_runtime / "bin"
     config_path = fake_runtime / "config.toml"
     config_path.write_text(
         f"""
         [asr]
-        backend = "sensevoice"
+        batch_backend = "fake"
+        streaming_backend = "sensevoice-vad"
+        final_backend = "qwen3-sherpa"
+        sensevoice_model_id = "sensevoice-int8"
+        vad_model_id = "silero-vad"
+        qwen3_model_id = "qwen3-asr-0.6b-int8"
         language = "zh"
-        sensevoice_model_dir = "{sensevoice_dir}"
-        qwen3_model_dir = "{qwen_dir}"
-        sensevoice_command = "{bin_dir / "sherpa-onnx-offline"}"
-        qwen3_command = "{bin_dir / "sherpa-onnx-offline"}"
-        timeout_seconds = 10.0
+        provider = "cpu"
+        num_threads = 4
+        vad_threshold = 0.2
+        vad_min_speech_seconds = 0.2
+        vad_min_silence_seconds = 0.5
+        vad_max_speech_seconds = 20.0
 
         [capture]
         command = "{bin_dir / "pw-record"}"
+        sample_rate = 16000
+        channels = 1
+        format = "s16"
+        chunk_millis = 200
 
         [inject]
         prefer = "wtype"
@@ -123,8 +135,19 @@ def fake_config(fake_runtime: Path) -> Path:
         clipboard_fallback = true
         timeout_seconds = 10.0
 
-        [snippets]
-        "我的邮箱" = "me@example.com"
+        [processing]
+        provider = "none"
+        base_url = ""
+        model = ""
+        api_key_env = ""
+        timeout_seconds = 30.0
+
+        [history]
+        enabled = true
+
+        [daemon]
+        host = "127.0.0.1"
+        port = 8766
         """,
         encoding="utf-8",
     )
