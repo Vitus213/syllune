@@ -187,10 +187,17 @@ def test_product_data_commands_persist_and_serialize_end_to_end(
     assert json.loads(capsys.readouterr().out)["电子邮箱"] == "mail@example.com"
     assert main([*prefix, "vocabulary", "snippets", "remove", "电子邮箱"]) == 0
     assert "电子邮箱" not in json.loads(capsys.readouterr().out)
+    assert main([*prefix, "vocabulary", "correct", "type for me", "Type4Me"]) == 0
+    corrected = json.loads(capsys.readouterr().out)
+    assert corrected["hotwords"] == ["Type4Me"]
+    assert corrected["snippets"]["type for me"] == "Type4Me"
     assert main([*prefix, "vocabulary", "reload"]) == 0
     vocabulary = json.loads(capsys.readouterr().out)
-    assert vocabulary["hotwords"] == []
-    assert vocabulary["snippets"] == {"测试语音输入": "集成文本"}
+    assert vocabulary["hotwords"] == ["Type4Me"]
+    assert vocabulary["snippets"] == {
+        "测试语音输入": "集成文本",
+        "type for me": "Type4Me",
+    }
 
     wav_path = fake_runtime / "history.wav"
     wav_path.write_bytes(b"RIFF")

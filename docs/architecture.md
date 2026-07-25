@@ -74,6 +74,7 @@ vad_threshold = 0.2
 vad_min_speech_seconds = 0.2
 vad_min_silence_seconds = 0.5
 vad_max_speech_seconds = 20.0
+qwen3_max_segment_seconds = 12.0
 
 [capture]
 command = "pw-record"
@@ -111,6 +112,8 @@ port = 8766
 - `asr.final_backend`：`none`、`sensevoice`、`qwen3-sherpa`。
 - `asr.language`：`auto`、`zh`、`en`、`ja`、`ko`、`yue`。
 - `asr.provider`：`cpu`、`cuda`。
+- `asr.qwen3_max_segment_seconds`：大于 `0` 且不大于 `12`；限制单次 Qwen3-ASR 解码的音频时长，避免当前 512 上下文窗口截断。
+- 当前 Nix 闭包中的 `sherpa_onnx` 只有 CPU 和 OpenVINO Execution Provider；`asr.provider = "cuda"` 虽可通过配置校验，但会回退到 CPU，必须先打包 CUDA 运行时才能启用。
 - `inject.prefer`：`wtype`、`clipboard`。
 - `processing.provider`：`none`、`openai-compatible`、`ollama`。
 
@@ -175,9 +178,9 @@ WAV 或定时 pw-record
   -> HistoryStore
 ```
 
-`SenseVoiceProvider` 通过 `OfflineRecognizer.from_sense_voice()` 构造识别器，使用 `language`、`use_itn=True`、`num_threads` 和 `provider`。`Qwen3SherpaProvider` 通过 `OfflineRecognizer.from_qwen3_asr()` 构造识别器，使用词汇热词、`max_new_tokens=512`、线程数和运行提供方。输入 WAV 必须是未压缩 PCM16、16 kHz、单声道。
+`SenseVoiceProvider` 通过 `OfflineRecognizer.from_sense_voice()` 构造识别器，使用 `language`、`use_itn=True`、`num_threads` 和 `provider`。`Qwen3SherpaProvider` 通过 `OfflineRecognizer.from_qwen3_asr()` 构造识别器，使用词汇热词、`max_new_tokens=512`、线程数和运行提供方；它在解码前按 `qwen3_max_segment_seconds` 切分 PCM，规避当前 Qwen3 模型的 512 上下文窗口。输入 WAV 必须是未压缩 PCM16、16 kHz、单声道。
 
-`HybridProvider` 先得到 SenseVoice 草稿，再用 Qwen3-ASR 识别同一个完整 WAV。Qwen3-ASR 失败时返回草稿、`draft_text` 和 `hybrid-fallback`，不让一次成功的 SenseVoice 识别变成整体失败。
+`HybridProvider` 先得到 SenseVoice 草稿，再用 Qwen3-ASR 对同一 WAV 的安全时长分段解码。Qwen3-ASR 失败时返回草稿、`draft_text` 和 `hybrid-fallback`，不让一次成功的 SenseVoice 识别变成整体失败。
 
 批量 CLI：
 
@@ -211,7 +214,7 @@ stdout 以 6,400 字节，即 200 ms PCM16-LE 块读取，同时通过 `wave.wri
 
 停止后的权威文本规则：
 
-- `final_backend = "qwen3-sherpa"`：用完整临时 WAV 执行 Qwen3-ASR 校准；成功后最终后端为 `hybrid`。
+- `final_backend = "qwen3-sherpa"`：从完整临时 WAV 读取音频，按 `qwen3_max_segment_seconds` 分段执行 Qwen3-ASR 校准；成功后最终后端为 `hybrid`。
 - `final_backend = "none"` 或 `"sensevoice"`：SenseVoice 拼接结果直接成为权威文本。
 - Qwen3-ASR 缺 WAV、报错或返回空文本：先发布 `warning`，再以 `hybrid-fallback` 发布 SenseVoice 最终文本。
 

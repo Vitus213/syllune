@@ -156,6 +156,23 @@ def test_qwen_factory_arguments_and_private_sanitation(tmp_path: Path) -> None:
     ]
 
 
+def test_qwen_splits_long_audio_before_decoder_context_limit(tmp_path: Path) -> None:
+    model_dir = tmp_path / "qwen"
+    model_dir.mkdir()
+    _qwen_model(model_dir)
+    wav_path = tmp_path / "long.wav"
+    _write_wav(wav_path, np.zeros(16_001, dtype=np.int16))
+    recognizer = _Recognizer(["第一段", "第二段"])
+    provider = Qwen3SherpaProvider(
+        ASRConfig(qwen3_max_segment_seconds=1.0),
+        model_dir=model_dir,
+        recognizer_factory=lambda **_kwargs: recognizer,
+    )
+
+    assert provider.transcribe(wav_path) == RecognitionResult("第一段第二段", "qwen3-sherpa")
+    assert [stream.accepted[0][1].size for stream in recognizer.streams] == [16_000, 1]
+
+
 def test_provider_reports_missing_int8_runtime_files_in_chinese(tmp_path: Path) -> None:
     provider = SenseVoiceProvider(ASRConfig(), model_dir=tmp_path)
 

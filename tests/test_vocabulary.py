@@ -93,6 +93,27 @@ def test_apply_snippets_allows_whitespace_case_and_ascii_boundaries(tmp_path: Pa
     assert result == "Linux, Linux! xNixOS NixOS2；me@example.com请保存 a我的邮箱b"
 
 
+def test_correct_teaches_hotword_replaces_transcript_and_is_idempotent(tmp_path: Path) -> None:
+    paths = _paths(tmp_path)
+    service = VocabularyService(paths, _defaults(tmp_path, hotwords=["Qwen3"]))
+
+    service.correct("type for me", "Type4Me")
+    service.correct("type for me", "Type4Me")
+
+    assert service.list_hotwords() == ("Qwen3", "Type4Me")
+    assert service.apply_snippets("type for me，Type4Me") == "Type4Me，Type4Me"
+    vocabulary = paths.data / "vocabulary"
+    assert json.loads(vocabulary.joinpath("hotwords.json").read_text(encoding="utf-8")) == [
+        "Type4Me"
+    ]
+    assert json.loads(vocabulary.joinpath("snippets.json").read_text(encoding="utf-8")) == {
+        "type for me": "Type4Me"
+    }
+
+    with pytest.raises(VocabularyError, match="不能相同"):
+        service.correct("Type 4 Me", "type4me")
+
+
 def test_atomic_crud_reload_and_cache_regeneration(tmp_path: Path) -> None:
     paths = _paths(tmp_path)
     service = VocabularyService(paths, _defaults(tmp_path, hotwords=["Default"]))

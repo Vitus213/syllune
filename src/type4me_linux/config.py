@@ -41,6 +41,7 @@ class ASRConfig:
     vad_min_speech_seconds: float = 0.2
     vad_min_silence_seconds: float = 0.5
     vad_max_speech_seconds: float = 20.0
+    qwen3_max_segment_seconds: float = 12.0
 
 
 @dataclass(frozen=True)
@@ -156,6 +157,13 @@ def _validate_config(config: Config) -> None:
     )
     if asr.vad_max_speech_seconds < asr.vad_min_speech_seconds:
         raise ValueError("配置项 asr.vad_max_speech_seconds 不得小于 asr.vad_min_speech_seconds。")
+    _number(
+        "asr.qwen3_max_segment_seconds",
+        asr.qwen3_max_segment_seconds,
+        minimum=0.0,
+        maximum=12.0,
+        strict_minimum=True,
+    )
 
     capture = config.capture
     _nonempty("capture.command", capture.command)

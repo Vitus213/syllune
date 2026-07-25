@@ -146,14 +146,33 @@ class Qwen3SherpaProvider:
 
     def transcribe(self, wav_path: Path) -> RecognitionResult:
         samples = _load_wav_pcm16(wav_path, self._numpy())
+        return RecognitionResult(
+            text=self.transcribe_samples(samples),
+            backend="qwen3-sherpa",
+        )
+
+    def transcribe_samples(self, samples: Any) -> str:
+        np = self._numpy()
+        values = np.asarray(samples, dtype=np.float32)
+        max_samples = int(SAMPLE_RATE * self.config.qwen3_max_segment_seconds)
+        if values.size <= max_samples:
+            text = self._transcribe_segment(values)
+        else:
+            text = _join_qwen_segments(
+                (
+                    self._transcribe_segment(values[offset : offset + max_samples])
+                    for offset in range(0, values.size, max_samples)
+                ),
+                self.config.language,
+            )
+        return _sanitize_qwen_output(text, self.hotwords)
+
+    def _transcribe_segment(self, samples: Any) -> str:
         recognizer = self._get_recognizer()
         stream = recognizer.create_stream()
         stream.accept_waveform(SAMPLE_RATE, samples)
         recognizer.decode_stream(stream)
-        return RecognitionResult(
-            text=_sanitize_qwen_output(_result_text(stream.result), self.hotwords),
-            backend="qwen3-sherpa",
-        )
+        return _result_text(stream.result)
 
     def missing_model_files(self) -> list[Path]:
         required = (
@@ -454,6 +473,11 @@ def _sanitize_qwen_output(text: str, hotwords: tuple[str, ...]) -> str:
         for pattern in patterns:
             cleaned = re.sub(pattern, "", cleaned, flags=re.I)
     return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _join_qwen_segments(segments: Iterable[str], language: str) -> str:
+    separator = "" if language in {"zh", "ja", "ko", "yue"} else " "
+    return separator.join(segment.strip() for segment in segments if segment.strip())
 
 
 def _sensevoice_recognizer_factory(**kwargs: Any) -> OfflineRecognizer:

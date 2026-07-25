@@ -15,9 +15,23 @@
     flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (
       system:
       let
-        pkgs = import nixpkgs { inherit system; };
+        pkgs = import nixpkgs {
+          inherit system;
+          config.allowUnfree = true;
+        };
         python = pkgs.python312;
-        sherpaOnnx = pkgs.sherpa-onnx.override { python3Packages = python.pkgs; };
+        sherpaOnnx = pkgs.sherpa-onnx.override (
+          {
+            python3Packages = python.pkgs;
+          }
+          // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+            cudaSupport = true;
+            onnxruntime = pkgs.onnxruntime.override {
+              cudaSupport = true;
+              cudaPackages = pkgs.cudaPackages_12;
+            };
+          }
+        );
         pythonEnv = python.withPackages (
           ps: with ps; [
             numpy
@@ -126,7 +140,8 @@
             "--prefix GIO_EXTRA_MODULES : ${
               pkgs.lib.makeSearchPath "lib/gio/modules" [ pkgs.glib-networking ]
             }"
-          ];
+          ] ++ pkgs.lib.optional (system == "x86_64-linux")
+            "--prefix LD_PRELOAD : ${pkgs.cudaPackages_12.cuda_nvrtc.lib}/lib/libnvrtc.so.12";
 
           preFixup = ''
             makeWrapperArgs+=("''${gappsWrapperArgs[@]}")

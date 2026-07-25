@@ -212,6 +212,10 @@ def _add_vocabulary_parser(sub: Any) -> None:
     kinds = vocabulary.add_subparsers(dest="vocabulary_kind", required=True)
     reload_command = kinds.add_parser("reload", help="重新读取词汇")
     reload_command.set_defaults(func=_vocabulary)
+    correct = kinds.add_parser("correct", help="修正本地误识别")
+    correct.add_argument("transcript")
+    correct.add_argument("replacement")
+    correct.set_defaults(func=_vocabulary)
     for kind, label in (("hotwords", "热词"), ("snippets", "片段")):
         parser = kinds.add_parser(kind, help=f"管理{label}")
         actions = parser.add_subparsers(dest="vocabulary_action", required=True)
@@ -474,6 +478,12 @@ def _vocabulary(args: argparse.Namespace, config: Config) -> int:
     if args.vocabulary_kind == "reload":
         service.reload()
         value: object = {
+            "hotwords": list(service.list_hotwords()),
+            "snippets": service.list_snippets(),
+        }
+    elif args.vocabulary_kind == "correct":
+        service.correct(args.transcript, args.replacement)
+        value = {
             "hotwords": list(service.list_hotwords()),
             "snippets": service.list_snippets(),
         }

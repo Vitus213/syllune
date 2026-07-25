@@ -64,6 +64,34 @@ class VocabularyService:
             self._store_hotwords((*self._user_hotwords, value))
             return self._hotwords
 
+    def correct(self, transcript: str, replacement: str) -> None:
+        """Teach the local recognizer and replace a recurring misrecognition."""
+        spoken = _clean_text(transcript, "误识别文本")
+        corrected = _clean_text(replacement, "修正文本")
+        spoken_key = _normalized_key(spoken)
+        corrected_key = _normalized_key(corrected)
+        if spoken_key == corrected_key:
+            raise VocabularyError("误识别文本与修正文本不能相同")
+
+        with self._lock:
+            hotwords = list(self._user_hotwords)
+            if _find_key(self._hotwords, corrected_key) is None:
+                hotwords.append(corrected)
+
+            snippets = dict(self._user_snippets)
+            existing_trigger = _find_mapping_key(snippets, spoken_key)
+            if existing_trigger is None:
+                snippets[spoken] = corrected
+            else:
+                snippets[existing_trigger] = corrected
+
+            hotwords_changed = tuple(hotwords) != self._user_hotwords
+            snippets_changed = snippets != self._user_snippets
+            if hotwords_changed:
+                self._store_hotwords(hotwords)
+            if snippets_changed:
+                self._store_snippets(snippets)
+
     def update_hotword(self, word: str, replacement: str) -> tuple[str, ...]:
         old_key = _normalized_key(_clean_text(word, "热词"))
         value = _clean_text(replacement, "热词")

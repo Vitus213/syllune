@@ -33,6 +33,7 @@ def test_exact_defaults() -> None:
             vad_min_speech_seconds=0.2,
             vad_min_silence_seconds=0.5,
             vad_max_speech_seconds=20.0,
+            qwen3_max_segment_seconds=12.0,
         ),
         capture=CaptureConfig(
             command="pw-record",
@@ -85,6 +86,7 @@ def test_all_strict_sections_accept_model_ids_and_supported_values() -> None:
                 "vad_min_speech_seconds": 0.1,
                 "vad_min_silence_seconds": 0.4,
                 "vad_max_speech_seconds": 10.0,
+                "qwen3_max_segment_seconds": 10.0,
             },
             "capture": {
                 "command": "/run/current-system/sw/bin/pw-record",
@@ -162,6 +164,16 @@ def test_rejects_removed_notify_command() -> None:
             {"asr": {"vad_min_speech_seconds": 2.0, "vad_max_speech_seconds": 1.0}},
             ValueError,
             "vad_max_speech_seconds 不得小于",
+        ),
+        (
+            {"asr": {"qwen3_max_segment_seconds": 0}},
+            ValueError,
+            "qwen3_max_segment_seconds 必须大于",
+        ),
+        (
+            {"asr": {"qwen3_max_segment_seconds": 12.1}},
+            ValueError,
+            "qwen3_max_segment_seconds 必须",
         ),
         ({"capture": {"sample_rate": 0}}, ValueError, "capture.sample_rate 必须在"),
         ({"capture": {"format": "f32"}}, ValueError, "capture.format 的值无效"),

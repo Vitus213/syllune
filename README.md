@@ -78,7 +78,7 @@ type4me-linux transcribe ./audio.wav --backend fake --inject
 type4me-linux record --seconds 5 --backend hybrid --no-inject
 ```
 
-`hybrid` 先用 SenseVoice 识别完整 WAV，再用 Qwen3-ASR 识别同一音频；Qwen3-ASR 失败时保留 SenseVoice 文本并把后端标记为 `hybrid-fallback`。
+`hybrid` 先用 SenseVoice 识别完整 WAV，再用 Qwen3-ASR 识别同一音频；Qwen3-ASR 失败时保留 SenseVoice 文本并把后端标记为 `hybrid-fallback`。Qwen 输入会按 `asr.qwen3_max_segment_seconds` 分段，避免当前模型的 512 上下文窗口截断长音频。
 
 实时命令目前只接受 `sensevoice-vad`：
 
@@ -88,7 +88,7 @@ type4me-linux stream --mode 语音润色 --no-inject
 type4me-linux stream --mode quick --json
 ```
 
-这里的“流式”是模拟流式，而不是模型的原生逐 token 流。`pw-record` 输出 PCM16-LE、16 kHz、单声道音频；Silero VAD 以 512 样本窗口分段，活动语音期间每 200 ms 用新的 SenseVoice 离线流解码当前片段。VAD 释放片段后，文本进入 `confirmed_segments`。正常停止时排空 VAD，并由 `asr.final_backend` 决定权威文本：默认 `qwen3-sherpa` 用完整临时 WAV 做 Qwen3-ASR 校准；`none` 或 `sensevoice` 直接采用 SenseVoice 结果。校准失败会产生 `warning`，随后发布后端为 `hybrid-fallback` 的 SenseVoice 最终文本，不丢弃成功听写。
+这里的“流式”是模拟流式，而不是模型的原生逐 token 流。`pw-record` 输出 PCM16-LE、16 kHz、单声道音频；Silero VAD 以 512 样本窗口分段，活动语音期间每 200 ms 用新的 SenseVoice 离线流解码当前片段。VAD 释放片段后，文本进入 `confirmed_segments`。正常停止时排空 VAD，并由 `asr.final_backend` 决定权威文本：默认 `qwen3-sherpa` 从临时 WAV 读取音频后按 `asr.qwen3_max_segment_seconds` 分段校准；`none` 或 `sensevoice` 直接采用 SenseVoice 结果。校准失败会产生 `warning`，随后发布后端为 `hybrid-fallback` 的 SenseVoice 最终文本，不丢弃成功听写。
 
 普通模式只把唯一最终权威文本写到 stdout；交互终端上的局部文本显示在 stderr。任何局部文本都不会注入目标应用，最终文本最多注入一次。
 
@@ -173,6 +173,7 @@ vad_threshold = 0.2
 vad_min_speech_seconds = 0.2
 vad_min_silence_seconds = 0.5
 vad_max_speech_seconds = 20.0
+qwen3_max_segment_seconds = 12.0
 
 [capture]
 command = "pw-record"
@@ -204,6 +205,10 @@ port = 8766
 ```
 
 `asr.language` 可为 `auto`、`zh`、`en`、`ja`、`ko`、`yue`；`asr.provider` 可为 `cpu` 或 `cuda`；`asr.final_backend` 可为 `none`、`sensevoice` 或 `qwen3-sherpa`。每个模型 ID 只通过 ModelManager 的已校验 `current` 指针解析。
+
+### CUDA 推理
+
+`x86_64-linux` 包会构建带 CUDA 的 ONNX Runtime 与 Sherpa；在配置中设置 `provider = "cuda"` 即可启用。它需要兼容的 NVIDIA 驱动，且 CUDA 依赖受 NVIDIA EULA 约束，因此 flake 只为该目标允许这些非自由依赖。CUDA 提供者不可用时会报告识别错误，不会静默回退到 CPU；默认值仍为 `cpu`，以保持非 NVIDIA 系统可移植。
 
 OpenAI 兼容示例：
 
@@ -251,10 +256,12 @@ type4me-linux vocabulary snippets list
 type4me-linux vocabulary snippets add "我的邮箱" "me@example.com"
 type4me-linux vocabulary snippets update "我的邮箱" "new@example.com" --new-trigger "工作邮箱"
 type4me-linux vocabulary snippets remove "工作邮箱"
+type4me-linux vocabulary correct "type for me" "Type4Me"
+
 type4me-linux vocabulary reload
 ```
 
-CLI 的添加、更新和删除只修改用户文件，采用原子写入；内置默认文件保持不可变。
+CLI 的添加、更新、删除与修正只修改用户文件；`correct` 同时将正确词加入热词并建立“误识别文本→正确词”片段映射。每次文件写入采用原子替换，内置默认文件保持不可变。
 
 ## 历史
 
