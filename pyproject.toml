@@ -28,6 +28,7 @@ addopts = "-q --cov=type4me_linux --cov-report=term-missing --cov-fail-under=90"
 markers = [
     "integration: 使用伪造外部命令的 CLI 集成测试",
     "e2e: 使用伪造 Linux 外部工具的端到端 CLI 流程测试",
+    "real_asr: 使用已安装模型的可选真实 ASR 冒烟测试",
 ]
 
 [tool.ruff]

@@ -234,8 +234,8 @@ class _SegmentRecognizer:
         return "乙" if float(samples.max(initial=0.0)) > 0.04 else "甲"
 
 
-def _pcm(value: int) -> bytes:
-    return np.full(3_200, value, dtype="<i2").tobytes()
+def _pcm(value: int, samples: int = 3_200) -> bytes:
+    return np.full(samples, value, dtype="<i2").tobytes()
 
 
 def test_vad_streamer_emits_changed_partial_confirmed_and_final_in_order(
@@ -287,6 +287,56 @@ def test_vad_streamer_emits_changed_partial_confirmed_and_final_in_order(
             "sample_rate": 16_000,
         }
     ]
+
+
+def test_vad_partial_cadence_bounds_decoding_and_confirms_completed_segments(
+    tmp_path: Path,
+) -> None:
+    model = tmp_path / "silero_vad.onnx"
+    model.write_bytes(b"model")
+    vad = _Vad()
+    recognizer = _SegmentRecognizer()
+    streamer = SenseVoiceVadStreamer(
+        ASRConfig(partial_interval_millis=200),
+        recognizer,  # type: ignore[arg-type]
+        vad_model_dir=model,
+        vad_factory=lambda **_kwargs: vad,
+    )
+
+    assert streamer.accept_chunk(_pcm(1_000, 3_199)) == ()
+    assert recognizer.inputs == []
+    assert [item.partial_text for item in streamer.accept_chunk(_pcm(1_000, 1))] == ["甲"]
+    assert len(recognizer.inputs) == 1
+
+    assert streamer.accept_chunk(_pcm(1_000, 3_199)) == ()
+    assert len(recognizer.inputs) == 1
+    assert streamer.accept_chunk(_pcm(1_000, 1)) == ()
+    assert len(recognizer.inputs) == 2
+
+    assert streamer.accept_chunk(_pcm(1_000, 6_400)) == ()
+    assert len(recognizer.inputs) == 3
+
+    vad.complete()
+    confirmed = streamer.accept_chunk(b"")
+    assert len(recognizer.inputs) == 4
+    assert [(item.confirmed_segments, item.partial_text) for item in confirmed] == [(("甲",), "")]
+
+
+def test_vad_partial_cadence_uses_configured_interval(tmp_path: Path) -> None:
+    model = tmp_path / "silero_vad.onnx"
+    model.write_bytes(b"model")
+    recognizer = _SegmentRecognizer()
+    streamer = SenseVoiceVadStreamer(
+        ASRConfig(partial_interval_millis=400),
+        recognizer,  # type: ignore[arg-type]
+        vad_model_dir=model,
+        vad_factory=lambda **_kwargs: _Vad(),
+    )
+
+    assert streamer.accept_chunk(_pcm(1_000, 3_200)) == ()
+    assert recognizer.inputs == []
+    assert [item.partial_text for item in streamer.accept_chunk(_pcm(1_000, 3_200))] == ["甲"]
+    assert len(recognizer.inputs) == 1
 
 
 def test_create_provider_has_no_http_qwen_backend() -> None:

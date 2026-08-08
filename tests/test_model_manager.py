@@ -783,6 +783,51 @@ def test_resolve_requires_installed_intact_payload(tmp_path: Path) -> None:
     installed = manager.install(spec.id)
     assert manager.resolve(spec.id) == installed
     (installed / "model.bin").write_bytes(b"corrupt")
+    assert manager.check(spec.id)["ok"] is False
+    with pytest.raises(ModelManagerError, match="未通过完整性校验"):
+        manager.resolve(spec.id)
+
+
+def test_resolve_caches_successful_checks_and_explicit_check_evicts_corruption(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = _valid_archive()
+    spec = _spec(payload)
+    manager = _manager(tmp_path, spec, MemoryTransport(payload))
+    installed = manager.install(spec.id)
+    checks = 0
+    original_check_payload = manager._check_payload
+
+    def count_check_payload(path: Path, checked_spec: ModelSpec) -> dict[str, list[str]]:
+        nonlocal checks
+        checks += 1
+        return original_check_payload(path, checked_spec)
+
+    monkeypatch.setattr(manager, "_check_payload", count_check_payload)
+
+    assert manager.resolve(spec.id) == installed
+    assert manager.resolve(spec.id) == installed
+    assert checks == 1
+    assert manager.check(spec.id)["ok"] is True
+    assert checks == 2
+
+    (installed / "model.bin").write_bytes(b"corrupt")
+    report = manager.check(spec.id)
+    assert report["corrupt"] == ["model.bin"]
+    assert checks == 3
+    with pytest.raises(ModelManagerError, match="未通过完整性校验"):
+        manager.resolve(spec.id)
+    assert checks == 4
+
+
+def test_force_remove_evicts_cached_model_resolution(tmp_path: Path) -> None:
+    payload = _valid_archive()
+    spec = _spec(payload)
+    manager = _manager(tmp_path, spec, MemoryTransport(payload))
+
+    manager.install(spec.id)
+    manager.resolve(spec.id)
+    assert manager.remove(spec.id, force=True) is True
     with pytest.raises(ModelManagerError, match="未通过完整性校验"):
         manager.resolve(spec.id)
 

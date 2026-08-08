@@ -30,7 +30,8 @@ def expand_path(value: str | Path) -> Path:
 class ASRConfig:
     batch_backend: str = "hybrid"
     streaming_backend: str = "sensevoice-vad"
-    final_backend: str = "qwen3-sherpa"
+    final_backend: str = "sensevoice"
+    partial_interval_millis: int = 200
     sensevoice_model_id: str = "sensevoice-int8"
     vad_model_id: str = "silero-vad"
     qwen3_model_id: str = "qwen3-asr-0.6b-int8"
@@ -50,7 +51,7 @@ class CaptureConfig:
     sample_rate: int = 16000
     channels: int = 1
     format: str = "s16"
-    chunk_millis: int = 200
+    chunk_millis: int = 32
 
 
 @dataclass(frozen=True)
@@ -138,7 +139,8 @@ def _validate_config(config: Config) -> None:
     asr = config.asr
     _enum("asr.batch_backend", asr.batch_backend, {"fake", "sensevoice", "qwen3-sherpa", "hybrid"})
     _enum("asr.streaming_backend", asr.streaming_backend, {"sensevoice-vad"})
-    _enum("asr.final_backend", asr.final_backend, {"none", "sensevoice", "qwen3-sherpa"})
+    _enum("asr.final_backend", asr.final_backend, {"sensevoice", "qwen3-sherpa"})
+    _integer("asr.partial_interval_millis", asr.partial_interval_millis, minimum=32, maximum=5000)
     _model_id("asr.sensevoice_model_id", asr.sensevoice_model_id)
     _model_id("asr.vad_model_id", asr.vad_model_id)
     _model_id("asr.qwen3_model_id", asr.qwen3_model_id)
@@ -171,7 +173,10 @@ def _validate_config(config: Config) -> None:
     _integer("capture.channels", capture.channels, minimum=1, maximum=8)
     _enum("capture.format", capture.format, {"s16"})
     _integer("capture.chunk_millis", capture.chunk_millis, minimum=10, maximum=5000)
-
+    if capture.sample_rate != 16000:
+        raise ValueError("实时识别仅支持 capture.sample_rate = 16000")
+    if capture.channels != 1:
+        raise ValueError("实时识别仅支持 capture.channels = 1")
     inject = config.inject
     _enum("inject.prefer", inject.prefer, {"wtype", "clipboard"})
     _nonempty("inject.wtype_command", inject.wtype_command)

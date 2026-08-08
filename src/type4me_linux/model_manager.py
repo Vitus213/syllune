@@ -13,6 +13,7 @@ import stat
 import tarfile
 import urllib.request
 import uuid
+from threading import RLock
 from collections.abc import Callable, Collection, Iterable, Mapping
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Protocol
@@ -70,7 +71,8 @@ class ModelManager:
             self._catalog = {spec.id: spec for spec in catalog}
         self._transport = transport or HttpsTransport()
         self._active_model_ids = active_model_ids or (lambda: ())
-
+        self._resolution_lock = RLock()
+        self._resolution_cache: dict[str, tuple[str, Path]] = {}
         self._models_root = paths.data / "models"
         self._versions_root = self._models_root / "versions"
         self._downloads_root = paths.cache / "model-downloads"
@@ -88,12 +90,16 @@ class ModelManager:
     def install(self, model_id: str) -> Path:
         spec = self._spec(model_id)
         with self._lock(model_id):
-            return self._install_locked(spec)
+            installed = self._install_locked(spec)
+            self._evict_cached_resolution(spec.id)
+            return installed
 
     def update(self, model_id: str) -> Path:
         spec = self._spec(model_id)
         with self._lock(model_id):
-            return self._install_locked(spec)
+            installed = self._install_locked(spec)
+            self._evict_cached_resolution(spec.id)
+            return installed
 
     def check(self, model_id: str) -> dict[str, object]:
         spec = self._spec(model_id)
@@ -113,9 +119,11 @@ class ModelManager:
             target_name, payload = self._read_current_pointer(spec.id, pointer)
         except FileNotFoundError:
             result["errors"] = ["模型尚未安装。"]
+            self._evict_cached_resolution(spec.id)
             return result
         except ModelManagerError as exc:
             result["errors"] = [str(exc)]
+            self._evict_cached_resolution(spec.id)
             return result
 
         result["installed"] = True
@@ -124,6 +132,10 @@ class ModelManager:
         details = self._check_payload(payload, spec)
         result.update(details)
         result["ok"] = not any(result[key] for key in ("missing", "extra", "corrupt", "errors"))
+        if result["ok"]:
+            self._cache_resolution(spec.id, target_name, payload)
+        else:
+            self._evict_cached_resolution(spec.id)
         return result
 
     def remove(self, model_id: str, *, force: bool = False) -> bool:
@@ -142,13 +154,40 @@ class ModelManager:
             _remove_no_follow(version_dir)
             _fsync_directory(self._models_root)
             _fsync_directory(self._versions_root)
+            self._evict_cached_resolution(spec.id)
             return True
 
     def resolve(self, model_id: str) -> Path:
-        result = self.check(model_id)
-        if not result["ok"]:
-            raise ModelManagerError(f"模型“{model_id}”未通过完整性校验。")
-        return Path(str(result["path"]))
+        spec = self._spec(model_id)
+        pointer = self._current_pointer(spec.id)
+        with self._resolution_lock:
+            try:
+                target_name, payload = self._read_current_pointer(spec.id, pointer)
+            except (FileNotFoundError, ModelManagerError):
+                result = self.check(spec.id)
+            else:
+                cached = self._cached_resolution(spec.id, target_name, payload)
+                if cached is not None:
+                    return cached
+                result = self.check(spec.id)
+            if not result["ok"]:
+                raise ModelManagerError(f"模型“{model_id}”未通过完整性校验。")
+            return Path(str(result["path"]))
+
+    def _cached_resolution(self, model_id: str, target_name: str, payload: Path) -> Path | None:
+        with self._resolution_lock:
+            cached = self._resolution_cache.get(model_id)
+            if cached != (target_name, payload):
+                return None
+            return cached[1]
+
+    def _cache_resolution(self, model_id: str, target_name: str, payload: Path) -> None:
+        with self._resolution_lock:
+            self._resolution_cache[model_id] = (target_name, payload)
+
+    def _evict_cached_resolution(self, model_id: str) -> None:
+        with self._resolution_lock:
+            self._resolution_cache.pop(model_id, None)
 
     def _spec(self, model_id: str) -> ModelSpec:
         try:

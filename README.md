@@ -50,7 +50,7 @@ type4me-linux model remove sensevoice-int8
 type4me-linux model remove sensevoice-int8 --force
 ```
 
-`model check` 完全离线：它读取已激活版本的 `manifest.json`，重新检查缺失、多余和损坏文件，不访问网络。`install` 与 `update` 使用每模型锁、有限大小的 `.partial` 下载、固定 SRI SHA-256、严格归档成员白名单、私有暂存目录和原子 `current` 指针；失败不会替换原有可用版本。配置正在引用的模型默认不能删除，明确使用 `--force` 才会删除；重复删除未安装模型会报告“模型未安装”。
+`model check` 完全离线：它读取已激活版本的 `manifest.json`，重新检查缺失、多余和损坏文件，不访问网络。`ModelManager.resolve()` 每次仍安全读取 `current` 指针，但只在目标名和载荷路径匹配已成功校验的缓存时复用该路径；显式 `check()` 始终重新扫描并哈希全部清单文件，失败会逐出缓存。`install` 与 `update` 使用每模型锁、有限大小的 `.partial` 下载、固定 SRI SHA-256、严格归档成员白名单、私有暂存目录和原子 `current` 指针；失败不会替换原有可用版本。配置正在引用的模型默认不能删除，明确使用 `--force` 才会删除；重复删除未安装模型会报告“模型未安装”。
 
 默认布局如下：
 
@@ -88,7 +88,7 @@ type4me-linux stream --mode 语音润色 --no-inject
 type4me-linux stream --mode quick --json
 ```
 
-这里的“流式”是模拟流式，而不是模型的原生逐 token 流。`pw-record` 输出 PCM16-LE、16 kHz、单声道音频；Silero VAD 以 512 样本窗口分段，活动语音期间每 200 ms 用新的 SenseVoice 离线流解码当前片段。VAD 释放片段后，文本进入 `confirmed_segments`。正常停止时排空 VAD，并由 `asr.final_backend` 决定权威文本：默认 `qwen3-sherpa` 从临时 WAV 读取音频后按 `asr.qwen3_max_segment_seconds` 分段校准；`none` 或 `sensevoice` 直接采用 SenseVoice 结果。校准失败会产生 `warning`，随后发布后端为 `hybrid-fallback` 的 SenseVoice 最终文本，不丢弃成功听写。
+这里的“流式”是模拟流式，而不是模型的原生逐 token 流。实时采集严格要求 PCM16-LE、16 kHz、单声道；`pw-record` 默认每 32 ms 读取一个 1,024 字节块并写入临时 WAV。Silero VAD 以 512 样本窗口分段，活动语音期间默认每 200 ms 用新的 SenseVoice 离线流解码当前片段，两个间隔分别由 `capture.chunk_millis` 和 `asr.partial_interval_millis` 控制。VAD 释放片段后，文本进入 `confirmed_segments`；EOF 的非空对齐尾部会先交给 SenseVoice，再执行 `flush()`。正常停止默认直接采用 SenseVoice 的 `sensevoice-vad` 最终文本；`qwen3-sherpa` 是显式的准确性优先校准策略，成功后后端为 `hybrid`，失败会产生 `warning` 并发布 `hybrid-fallback` 的 SenseVoice 文本。旧配置的 `final_backend = "none"` 必须改为 `"sensevoice"`。
 
 普通模式只把唯一最终权威文本写到 stdout；交互终端上的局部文本显示在 stderr。任何局部文本都不会注入目标应用，最终文本最多注入一次。
 
@@ -162,7 +162,8 @@ type4me-linux --config ~/.config/type4me-linux/config.toml stream --mode voice-p
 [asr]
 batch_backend = "hybrid"
 streaming_backend = "sensevoice-vad"
-final_backend = "qwen3-sherpa"
+final_backend = "sensevoice"
+partial_interval_millis = 200
 sensevoice_model_id = "sensevoice-int8"
 vad_model_id = "silero-vad"
 qwen3_model_id = "qwen3-asr-0.6b-int8"
@@ -180,7 +181,7 @@ command = "pw-record"
 sample_rate = 16000
 channels = 1
 format = "s16"
-chunk_millis = 200
+chunk_millis = 32
 
 [inject]
 prefer = "wtype"
@@ -204,7 +205,7 @@ host = "127.0.0.1"
 port = 8766
 ```
 
-`asr.language` 可为 `auto`、`zh`、`en`、`ja`、`ko`、`yue`；`asr.provider` 可为 `cpu` 或 `cuda`；`asr.final_backend` 可为 `none`、`sensevoice` 或 `qwen3-sherpa`。每个模型 ID 只通过 ModelManager 的已校验 `current` 指针解析。
+`asr.language` 可为 `auto`、`zh`、`en`、`ja`、`ko`、`yue`；`asr.provider` 可为 `cpu` 或 `cuda`；`asr.final_backend` 只可为 `sensevoice` 或 `qwen3-sherpa`；`asr.partial_interval_millis` 必须在 32 到 5000 之间。实时识别只接受 `capture.sample_rate = 16000`、`capture.channels = 1` 和 `capture.format = "s16"`。每个模型 ID 只通过 ModelManager 的已校验 `current` 指针解析。
 
 ### CUDA 推理
 
@@ -293,7 +294,7 @@ type4me-linux gui
 type4me-linux gui --background
 ```
 
-Adwaita 应用 ID 为 `io.github.vitus.Type4Me`。启动后应用调用 `hold()` 保持常驻；关闭窗口只隐藏窗口，后续桌面文件启动会激活并呈现同一实例。显式“退出 Type4Me”才会取消活动会话、关闭快捷键与 D-Bus 服务、释放持有并退出。音频、ASR、模型检查和历史读取在工作线程运行，GTK 主线程只接收不可变状态更新；窗口未聚焦时，完成或错误通过 `Gio.Notification` 通知。
+Adwaita 应用 ID 为 `io.github.vitus.Type4Me`。启动后应用调用 `hold()` 保持常驻；关闭窗口只隐藏窗口，后续桌面文件启动会激活并呈现同一实例。显式“退出 Type4Me”才会取消活动会话、关闭快捷键与 D-Bus 服务、释放持有并退出。音频、ASR、模型检查和历史读取在工作线程运行，GTK 主线程只接收不可变状态更新；录音开始、停止后最终识别、识别完成和错误状态都会通过 `Gio.Notification` 通知，窗口是否聚焦不影响发送。
 
 常驻进程导出 D-Bus 名称 `io.github.vitus.Type4Me`、对象 `/io/github/vitus/Type4Me`、接口 `io.github.vitus.Type4Me.Controller`，方法为 `Toggle()`、`HoldStart()`、`HoldStop()`、`Cancel()` 和 `ShowWindow()`。这些 CLI 命令只控制现有常驻进程，不会启动第二个录音器：
 
@@ -387,7 +388,7 @@ Home Manager 示例：
               asr = {
                 batch_backend = "hybrid";
                 streaming_backend = "sensevoice-vad";
-                final_backend = "qwen3-sherpa";
+                final_backend = "sensevoice";
                 language = "zh";
               };
               processing.provider = "none";
@@ -418,14 +419,20 @@ systemctl --user status type4me-linux.service
 
 ```bash
 nix develop -c python -m pytest --no-cov \
-  tests/test_session.py tests/test_capture_stream.py tests/test_model_manager.py \
-  tests/test_vocabulary.py tests/test_processing.py tests/test_history.py \
-  tests/test_shortcuts.py
+  tests/test_config.py tests/test_capture_stream.py tests/test_providers.py \
+  tests/test_model_manager.py tests/test_pipeline.py
 
 nix develop -c python -m pytest --no-cov \
   tests/test_cli_stream.py tests/test_daemon.py tests/test_desktop_controller.py
 
 nix develop -c xvfb-run -a python -m pytest --no-cov tests/test_desktop_view.py
+```
+
+安装 SenseVoice 模型后的可选真实推理冒烟：
+
+```bash
+TYPE4ME_REAL_ASR=1 nix develop -c python -m pytest --no-cov \
+  -m real_asr tests/test_real_asr_smoke.py
 ```
 
 完整测试和打包检查：
@@ -441,8 +448,7 @@ nix develop -c python -c 'import sherpa_onnx, gi, numpy'
 模型、产品数据和桌面集成的进一步专项命令：
 
 ```bash
-nix develop -c python -m pytest --no-cov tests/test_config.py
-nix develop -c python -m pytest --no-cov tests/test_model_catalog.py tests/test_model_manager.py
+nix develop -c python -m pytest --no-cov tests/test_model_catalog.py
 nix develop -c python -m pytest --no-cov tests/test_vocabulary.py
 nix develop -c python -m pytest --no-cov tests/test_processing.py tests/test_modes.py
 nix develop -c python -m pytest --no-cov tests/test_history.py
@@ -451,7 +457,7 @@ nix develop -c python -m pytest --no-cov tests/test_control_bus.py tests/test_sh
 
 ### 真实 Wayland/PipeWire 冒烟测试
 
-此部分必须在有麦克风、PipeWire 和 Wayland 的真实桌面会话中执行：
+此部分必须在有麦克风、PipeWire、Wayland 和已安装模型的真实桌面会话中执行：
 
 ```bash
 type4me-linux model install sensevoice-int8
@@ -462,15 +468,22 @@ type4me-linux doctor
 type4me-linux stream --mode quick --no-inject --json
 ```
 
-说一句中文，然后第一次按 `Ctrl-C` 正常结束。确认至少出现 `ready`、一个或多个非最终 `transcript`、恰好一个 `is_final: true` 的权威转写，最后出现 `completed`；由于使用了 `--no-inject`，不得执行 `wtype`。随后在一次性 Wayland 文本目标中去掉 `--no-inject` 重试，确认只注入一次最终处理文本。
+说一句中文，然后第一次按 `Ctrl-C` 正常停止。默认快速模式必须出现 `ready`、零个或多个非最终 `transcript`、恰好一个最终 `backend: "sensevoice-vad"` 的转写和 `completed`；不得出现 Qwen 回退警告，也不得执行 `wtype`。在一次性 Wayland 文本目标中去掉 `--no-inject` 重试，确认只注入一次最终文本。
 
-再运行：
+再验证显式准确性优先策略：
+
+```bash
+printf '[asr]\nfinal_backend = "qwen3-sherpa"\n' > /tmp/type4me-qwen.toml
+type4me-linux --config /tmp/type4me-qwen.toml stream --mode quick --no-inject --json
+```
+
+其成功最终事件必须保留 `backend: "hybrid"`。然后运行：
 
 ```bash
 type4me-linux gui
 ```
 
-通过门户绑定按住说话和切换录音，分别确认按下/松开只启动/停止一次，切换键每次只切换一次。门户不可用时应用上面的三条 Sway 绑定，并确认它们通过同一个常驻控制器工作；关闭窗口后服务应继续运行，显式退出后服务应停止。
+在同一个一次性 Wayland 文本目标中不重启 GUI，连续完成两次按住说话或切换录音；两次都必须回到空闲、无 Qwen 回退警告，并且各自只注入一次最终文本。门户不可用时应用上面的三条 Sway 绑定，并确认它们通过同一个常驻控制器工作；关闭窗口后服务应继续运行，显式退出后服务应停止。
 
 ## 上游项目
 

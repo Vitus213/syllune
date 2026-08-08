@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import pytest
+import type4me_linux.pipeline as pipeline_module
 
 from type4me_linux.clipboard import ClipboardSnapshot
 from type4me_linux.config import ASRConfig, Config, HistoryConfig, ProcessingConfig
@@ -570,10 +571,8 @@ def test_processor_factory_supports_all_configured_providers(
     assert isinstance(processor, processor_type)
 
 
-def test_processor_and_final_provider_factories_reject_unknown_ids(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="不支持的文本处理提供方"):
-        _create_processor(Config(processing=ProcessingConfig(provider="unknown")))  # type: ignore[arg-type]
-
+@pytest.mark.parametrize("final_backend", ["", "none", "unsupported"])
+def test_live_calibrator_rejects_unknown_ids(tmp_path: Path, final_backend: str) -> None:
     pipeline = _pipeline(
         tmp_path,
         capture=_Capture(tmp_path / "unsupported.wav"),
@@ -582,17 +581,14 @@ def test_processor_and_final_provider_factories_reject_unknown_ids(tmp_path: Pat
         injector=_Injector(),
         history=_History(),
     )
-    pipeline._calibrator = None
-    pipeline.config = Config(asr=ASRConfig(batch_backend="fake", final_backend="unsupported"))
+    pipeline._configured_calibrator = None
+    pipeline.config = Config(asr=ASRConfig(batch_backend="fake", final_backend=final_backend))
+
     with pytest.raises(ValueError, match="不支持的最终识别后端"):
-        pipeline._live_calibrator()
+        pipeline._get_live_calibrator()
 
 
-@pytest.mark.parametrize("final_backend", ["", "none", "sensevoice"])
-def test_live_calibrator_can_be_intentionally_disabled(
-    tmp_path: Path,
-    final_backend: str,
-) -> None:
+def test_live_sensevoice_policy_disables_calibrator(tmp_path: Path) -> None:
     pipeline = _pipeline(
         tmp_path,
         capture=_Capture(tmp_path / "disabled.wav"),
@@ -601,10 +597,10 @@ def test_live_calibrator_can_be_intentionally_disabled(
         injector=_Injector(),
         history=_History(),
     )
-    pipeline._calibrator = None
-    pipeline.config = Config(asr=ASRConfig(batch_backend="fake", final_backend=final_backend))
+    pipeline._configured_calibrator = None
+    pipeline.config = Config(asr=ASRConfig(batch_backend="fake", final_backend="sensevoice"))
 
-    assert pipeline._live_calibrator() is None
+    assert pipeline._get_live_calibrator() is None
 
 
 def test_live_failed_injection_overrides_successful_processing_status(tmp_path: Path) -> None:
@@ -648,7 +644,166 @@ def test_live_calibrator_factory_builds_qwen_with_effective_hotwords(
         model_manager=_Models(),  # type: ignore[arg-type]
     )
 
-    calibrator = pipeline._live_calibrator()
+    calibrator = pipeline._get_live_calibrator()
 
     assert isinstance(calibrator, Qwen3SherpaProvider)
     assert calibrator.hotwords == ("Qwen",)
+
+
+def test_live_provider_lifetime_reuses_models_and_keeps_session_state_isolated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sensevoice_instances: list[object] = []
+    qwen_instances: list[object] = []
+
+    class RecordingSenseVoiceProvider:
+        def __init__(self, *_args: object, **kwargs: object) -> None:
+            self.model_dir = kwargs["model_dir"]
+            sensevoice_instances.append(self)
+
+    class RecordingQwenProvider:
+        def __init__(self, *_args: object, **kwargs: object) -> None:
+            self.calls = 0
+            self.hotwords = kwargs["hotwords"]
+            qwen_instances.append(self)
+
+        def transcribe(self, _wav_path: Path) -> RecognitionResult:
+            self.calls += 1
+            return RecognitionResult("Qwen 最终文本", "qwen3-sherpa")
+
+    class FlushedSenseVoiceStreamer:
+        def accept_chunk(self, _chunk: bytes) -> tuple[RecognitionTranscript, ...]:
+            return ()
+
+        def flush(self) -> RecognitionTranscript:
+            return RecognitionTranscript(
+                ("SenseVoice 最终文本",),
+                "",
+                "SenseVoice 最终文本",
+                True,
+                "sensevoice-vad",
+            )
+
+    monkeypatch.setattr(pipeline_module, "SenseVoiceProvider", RecordingSenseVoiceProvider)
+    monkeypatch.setattr(pipeline_module, "Qwen3SherpaProvider", RecordingQwenProvider)
+
+    qwen_root = tmp_path / "qwen"
+    qwen_root.mkdir()
+    qwen_paths = _paths(qwen_root)
+    qwen_streamers: list[tuple[object, _Streamer]] = []
+
+    def qwen_streamer_factory(_config: object, sensevoice: object, **_kwargs: object) -> _Streamer:
+        streamer = _Streamer()
+        qwen_streamers.append((sensevoice, streamer))
+        return streamer
+
+    qwen_pipeline = VoiceInputPipeline(
+        Config(asr=ASRConfig(batch_backend="fake", final_backend="qwen3-sherpa")),
+        provider=FakeProvider(),
+        injector=_Injector(),  # type: ignore[arg-type]
+        vocabulary=_vocabulary(qwen_root),
+        paths=qwen_paths,
+        modes=ModesRepository(qwen_paths),
+        history=_History(),  # type: ignore[arg-type]
+        model_manager=_Models(),  # type: ignore[arg-type]
+        capture_factory=lambda: _Capture(qwen_root / "unused.wav"),
+        streamer_factory=qwen_streamer_factory,
+    )
+
+    first = qwen_pipeline.create_session(RecognitionRequest(inject=False))
+    second = qwen_pipeline.create_session(RecognitionRequest(inject=False))
+    qwen_pipeline.vocabulary.add_hotword("Fresh")
+    third = qwen_pipeline.create_session(RecognitionRequest(inject=False))
+
+    assert len(sensevoice_instances) == 1
+    assert [item[0] for item in qwen_streamers] == [sensevoice_instances[0]] * 3
+    assert len({id(item[1]) for item in qwen_streamers}) == 3
+    assert len(qwen_instances) == 2
+    assert first._calibrator is second._calibrator is qwen_instances[0]  # type: ignore[attr-defined]
+    assert third._calibrator is qwen_instances[1]  # type: ignore[attr-defined]
+    assert getattr(qwen_instances[1], "hotwords") == ("Fresh",)
+
+    sense_root = tmp_path / "sense"
+    sense_root.mkdir()
+    sense_paths = _paths(sense_root)
+    events = []
+    sense_pipeline = VoiceInputPipeline(
+        Config(asr=ASRConfig(batch_backend="fake", final_backend="sensevoice")),
+        provider=FakeProvider(),
+        injector=_Injector(),  # type: ignore[arg-type]
+        vocabulary=_vocabulary(sense_root),
+        paths=sense_paths,
+        modes=ModesRepository(sense_paths),
+        history=_History(),  # type: ignore[arg-type]
+        model_manager=_Models(),  # type: ignore[arg-type]
+        capture_factory=lambda: _Capture(sense_root / "sense.wav"),
+        streamer_factory=lambda *_args, **_kwargs: FlushedSenseVoiceStreamer(),
+    )
+
+    sense_pipeline.create_session(RecognitionRequest(inject=False, event_sink=events.append)).run()
+
+    final = next(event.transcript for event in events if event.type == "finalized")
+    assert final is not None
+    assert final.authoritative_text == "SenseVoice 最终文本"
+    assert final.backend == "sensevoice-vad"
+    assert len(qwen_instances) == 2
+    assert all(getattr(instance, "calls") == 0 for instance in qwen_instances)
+
+
+def test_live_provider_refreshes_changed_model_and_rejects_removed_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first_model = tmp_path / "sensevoice-v1"
+    second_model = tmp_path / "sensevoice-v2"
+    resolutions: list[Path | Exception] = [
+        first_model,
+        second_model,
+        RuntimeError("模型已删除"),
+    ]
+    providers: list[object] = []
+    stream_providers: list[object] = []
+
+    class ChangingModels:
+        def resolve(self, model_id: str) -> Path:
+            if model_id != "sensevoice-int8":
+                return Path("/unused") / model_id
+            resolved = resolutions.pop(0)
+            if isinstance(resolved, Exception):
+                raise resolved
+            return resolved
+
+    class RecordingSenseVoiceProvider:
+        def __init__(self, *_args: object, **kwargs: object) -> None:
+            self.model_dir = kwargs["model_dir"]
+            providers.append(self)
+
+    def streamer_factory(_config: object, sensevoice: object, **_kwargs: object) -> _Streamer:
+        stream_providers.append(sensevoice)
+        return _Streamer()
+
+    monkeypatch.setattr(pipeline_module, "SenseVoiceProvider", RecordingSenseVoiceProvider)
+    paths = _paths(tmp_path)
+    pipeline = VoiceInputPipeline(
+        Config(asr=ASRConfig(batch_backend="fake", final_backend="sensevoice")),
+        provider=FakeProvider(),
+        injector=_Injector(),  # type: ignore[arg-type]
+        vocabulary=_vocabulary(tmp_path),
+        paths=paths,
+        modes=ModesRepository(paths),
+        history=_History(),  # type: ignore[arg-type]
+        model_manager=ChangingModels(),  # type: ignore[arg-type]
+        capture_factory=lambda: _Capture(tmp_path / "unused.wav"),
+        streamer_factory=streamer_factory,
+    )
+
+    pipeline.create_session(RecognitionRequest(inject=False))
+    pipeline.create_session(RecognitionRequest(inject=False))
+
+    assert [getattr(provider, "model_dir") for provider in providers] == [
+        first_model,
+        second_model,
+    ]
+    assert stream_providers == providers
+    with pytest.raises(RuntimeError, match="模型已删除"):
+        pipeline.create_session(RecognitionRequest(inject=False))
+    assert len(providers) == 2

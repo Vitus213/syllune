@@ -13,8 +13,11 @@ import wave
 from .config import CaptureConfig
 
 
-RAW_CHUNK_BYTES = 6_400
 _SAMPLE_WIDTH_BYTES = 2
+
+
+def _chunk_bytes(config: CaptureConfig) -> int:
+    return config.sample_rate * config.channels * _SAMPLE_WIDTH_BYTES * config.chunk_millis // 1000
 
 
 class _TemporaryFile(Protocol):
@@ -91,21 +94,21 @@ class RawCaptureSession:
             try:
                 wav_handle = wave.open(str(self._wav_path), "wb")
                 self._wave = wav_handle
-                wav_handle.setnchannels(1)
+                wav_handle.setnchannels(self.config.channels)
                 wav_handle.setsampwidth(_SAMPLE_WIDTH_BYTES)
-                wav_handle.setframerate(16_000)
+                wav_handle.setframerate(self.config.sample_rate)
                 self._process = self._popen_factory(
                     [
-                        "pw-record",
+                        self.config.command,
                         "--raw",
                         "--rate",
-                        "16000",
+                        str(self.config.sample_rate),
                         "--channels",
-                        "1",
+                        str(self.config.channels),
                         "--format",
-                        "s16",
+                        self.config.format,
                         "--latency",
-                        "200ms",
+                        f"{self.config.chunk_millis}ms",
                         "-",
                     ],
                     stdout=subprocess.PIPE,
@@ -131,14 +134,19 @@ class RawCaptureSession:
             self._iteration_active = True
 
         pending = bytearray()
+        chunk_bytes = _chunk_bytes(self.config)
         try:
             while True:
-                data = process.stdout.read(RAW_CHUNK_BYTES - len(pending))
+                data = process.stdout.read(chunk_bytes - len(pending))
                 if not data:
+                    if pending:
+                        if len(pending) % _SAMPLE_WIDTH_BYTES:
+                            raise ValueError("采集输出不是完整 PCM16 帧")
+                        yield bytes(pending)
                     return
                 wav_handle.writeframesraw(data)
                 pending.extend(data)
-                if len(pending) == RAW_CHUNK_BYTES:
+                if len(pending) == chunk_bytes:
                     yield bytes(pending)
                     pending.clear()
         finally:

@@ -12,7 +12,6 @@ from .events import RecognitionTranscript
 
 SAMPLE_RATE = 16_000
 VAD_WINDOW_SAMPLES = 512
-PARTIAL_INTERVAL_SAMPLES = 3_200
 
 
 @dataclass(frozen=True)
@@ -312,7 +311,8 @@ class SenseVoiceVadStreamer:
         self._confirmed: list[str] = []
         self._last_partial = ""
         self._samples_received = 0
-        self._next_partial_at = PARTIAL_INTERVAL_SAMPLES
+        self._partial_interval_samples = SAMPLE_RATE * config.partial_interval_millis // 1000
+        self._next_partial_at = self._partial_interval_samples
         self._flushed: RecognitionTranscript | None = None
 
         resolver = model_resolver or _default_model_resolver
@@ -354,7 +354,7 @@ class SenseVoiceVadStreamer:
         emitted = self._drain_completed()
         if self._samples_received >= self._next_partial_at:
             while self._next_partial_at <= self._samples_received:
-                self._next_partial_at += PARTIAL_INTERVAL_SAMPLES
+                self._next_partial_at += self._partial_interval_samples
             partial = self._decode_current_segment() if self._speech_detected() else ""
             if partial != self._last_partial:
                 self._last_partial = partial

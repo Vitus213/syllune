@@ -12,7 +12,7 @@ from typing import BinaryIO
 import pytest
 import type4me_linux.capture as capture_module
 
-from type4me_linux.capture import RAW_CHUNK_BYTES, RawCaptureSession, Recorder
+from type4me_linux.capture import RawCaptureSession, Recorder
 from type4me_linux.config import CaptureConfig
 
 
@@ -158,8 +158,9 @@ def _session(
 
 
 def test_raw_capture_exact_argv_chunks_and_claimed_wav(tmp_path: Path) -> None:
-    payload = bytes(range(256)) * 51
-    assert len(payload) == RAW_CHUNK_BYTES * 2 + 256
+    chunk_bytes = 1_024
+    payload = bytes(range(256)) * 9
+    assert len(payload) == chunk_bytes * 2 + 256
     process = _FakeProcess(_TrackedStream(payload, read_limit=733))
     session, popen_factory = _session(tmp_path, process)
 
@@ -167,8 +168,8 @@ def test_raw_capture_exact_argv_chunks_and_claimed_wav(tmp_path: Path) -> None:
         chunks = list(capture)
         wav_path = capture.claim_wav()
 
-    assert [len(chunk) for chunk in chunks] == [RAW_CHUNK_BYTES, RAW_CHUNK_BYTES]
-    assert b"".join(chunks) == payload[: RAW_CHUNK_BYTES * 2]
+    assert [len(chunk) for chunk in chunks] == [chunk_bytes, chunk_bytes, 256]
+    assert b"".join(chunks) == payload
     assert popen_factory.calls == [
         (
             [
@@ -181,7 +182,7 @@ def test_raw_capture_exact_argv_chunks_and_claimed_wav(tmp_path: Path) -> None:
                 "--format",
                 "s16",
                 "--latency",
-                "200ms",
+                "32ms",
                 "-",
             ],
             {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE},
@@ -197,6 +198,45 @@ def test_raw_capture_exact_argv_chunks_and_claimed_wav(tmp_path: Path) -> None:
     assert process.wait_calls == [0.25]
     session.release_wav()
     assert not wav_path.exists()
+
+
+def test_raw_capture_uses_configured_command_and_chunk_size(tmp_path: Path) -> None:
+    config = CaptureConfig(command="custom-pw-record", chunk_millis=64)
+    chunk_bytes = 2_048
+    payload = b"\x01\x00" * 1_280
+    process = _FakeProcess(_TrackedStream(payload))
+    popen_factory = _PopenFactory(process)
+    session = RawCaptureSession(
+        config,
+        popen_factory=popen_factory,  # type: ignore[arg-type]
+        temp_factory=_temp_factory(tmp_path),  # type: ignore[arg-type]
+    )
+
+    with session as capture:
+        assert [len(chunk) for chunk in capture] == [chunk_bytes, 512]
+
+    assert popen_factory.calls[0][0] == [
+        "custom-pw-record",
+        "--raw",
+        "--rate",
+        "16000",
+        "--channels",
+        "1",
+        "--format",
+        "s16",
+        "--latency",
+        "64ms",
+        "-",
+    ]
+
+
+def test_raw_capture_rejects_odd_pcm16_tail(tmp_path: Path) -> None:
+    process = _FakeProcess(_TrackedStream(b"\x01\x00" * 512 + b"\x01"))
+    session, _ = _session(tmp_path, process)
+
+    with pytest.raises(ValueError, match="采集输出不是完整 PCM16 帧"):
+        with session as capture:
+            list(capture)
 
 
 def test_unclaimed_owned_wav_is_removed(tmp_path: Path) -> None:
@@ -330,7 +370,7 @@ def test_caller_wav_is_never_deleted(tmp_path: Path) -> None:
     session, _ = _session(tmp_path, process, wav_path=caller_wav)
 
     with session as capture:
-        assert list(capture) == []
+        assert list(capture) == [payload]
 
     assert caller_wav.exists()
     with wave.open(str(caller_wav), "rb") as wav_file:

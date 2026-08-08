@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 import time
 
@@ -16,6 +17,7 @@ from type4me_linux.app_state import AppState, ModelCheck, ShortcutState
 from type4me_linux.config import Config
 from type4me_linux.desktop import Type4MeApplication
 from type4me_linux.events import RecognitionTranscript
+from type4me_linux.pipeline import RecognitionRequest
 from type4me_linux.history import HistoryPage, HistoryRecord
 from type4me_linux.modes import BUILTIN_MODES, Mode
 
@@ -220,6 +222,7 @@ def test_resident_window_state_navigation_notifications_and_quit(
         config=Config(),
     )
     application.window = window
+    assert window.get_default_size() == (680, 480)
     window.set_default_size(520, 420)
     assert window.get_default_size() == (520, 420)
     window.present()
@@ -246,7 +249,7 @@ def test_resident_window_state_navigation_notifications_and_quit(
     ]
     assert controller.history_refreshes == 1
     assert controller.model_refreshes == 1
-    assert window.get_size_request() == (520, 420)
+    assert window.get_size_request() == (480, 360)
     assert window.sidebar.has_css_class("type4me-sidebar")
     assert window.view_stack.has_css_class("type4me-page")
     assert len(window.navigation_rows) == 6
@@ -347,16 +350,16 @@ def test_resident_window_state_navigation_notifications_and_quit(
             return True
 
     application.window = ActiveWindow()  # type: ignore[assignment]
-    application.notify_when_unfocused("不应发送", "窗口有焦点")
-    assert not notifications
+    application.notify_when_unfocused("录音已开始", "窗口有焦点也发送")
+    assert len(notifications) == 1
     application.window = window
     window.set_visible(False)
     application.notify_when_unfocused("识别完成", "完成文本")
-    assert len(notifications) == 1
-    assert isinstance(notifications[0], Gio.Notification)
+    assert len(notifications) == 2
+    assert isinstance(notifications[1], Gio.Notification)
     application.notify_when_unfocused("提醒", "模型回退警告")
     application.notify_when_unfocused("识别失败", "麦克风不可用。")
-    assert len(notifications) == 3
+    assert len(notifications) == 4
 
     assert window.emit("close-request") is True
     drain_main_context()
@@ -693,6 +696,7 @@ def test_controller_and_resident_factory_contracts(
         control_bus_factory=lambda _controller: FakeControlBus(),
         shortcuts_factory=lambda _controller: fallback_shortcuts,
     )
+    assert GLib.get_application_name() == "Type4Me"
     assert application.controller is controller
     assert callable(created["scheduler"])
     assert callable(created["notifier"])
@@ -726,6 +730,7 @@ def test_controller_and_resident_factory_contracts(
         frozenset({"toggle-recording"}),
         None,
     )
+
     bound._shutdown_resident_integrations()
 
     binding_controller = FakeController()
@@ -785,9 +790,50 @@ def test_controller_and_resident_factory_contracts(
             sent_notifications.append((identifier, notification))
 
     sender = RecordingApplication(Config(), controller=FakeController())
+    sender.notify_when_unfocused("录音已开始", "再次按快捷键结束录音。")
+    sender.notify_when_unfocused("正在识别", "正在生成最终文本。")
     sender.notify_when_unfocused("识别完成", "后台文本")
-    assert len(sent_notifications) == 1
-    assert sent_notifications[0][0] is None
+    sender.notify_when_unfocused("录音已开始", "再次按快捷键结束录音。")
+    sender.notify_when_unfocused("正在识别", "正在生成最终文本。")
+    sender.notify_when_unfocused("识别完成", "后台文本")
+    assert [identifier for identifier, _notification in sent_notifications] == [
+        "recognition-recording-1",
+        "recognition-result-1",
+        "recognition-result-1",
+        "recognition-recording-2",
+        "recognition-result-2",
+        "recognition-result-2",
+    ]
+
+
+def test_default_controller_owns_one_resident_pipeline(
+    fake_runtime: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    constructions: list[object] = []
+
+    class RecordingPipeline:
+        def __init__(self, *_args: object, **kwargs: object) -> None:
+            self.requests: list[RecognitionRequest] = []
+            self.vocabulary = kwargs["vocabulary"]
+            constructions.append(self)
+
+        def create_session(self, request: RecognitionRequest) -> object:
+            self.requests.append(request)
+            return object()
+
+    monkeypatch.setattr(desktop, "VoiceInputPipeline", RecordingPipeline)
+    application = Type4MeApplication(Config())
+    controller = application.controller
+    first_request = RecognitionRequest(mode="quick")
+    second_request = RecognitionRequest(mode="voice-polish", inject=False)
+
+    controller._session_factory(first_request)  # type: ignore[attr-defined]
+    controller._session_factory(second_request)  # type: ignore[attr-defined]
+
+    assert len(constructions) == 1
+    assert application.vocabulary is constructions[0].vocabulary  # type: ignore[attr-defined]
+    assert constructions[0].requests == [first_request, second_request]  # type: ignore[attr-defined]
+    controller.close()
 
 
 def test_run_returns_application_exit_code(monkeypatch: pytest.MonkeyPatch) -> None:

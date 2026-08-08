@@ -63,7 +63,8 @@ state/history/migration.lock
 [asr]
 batch_backend = "hybrid"
 streaming_backend = "sensevoice-vad"
-final_backend = "qwen3-sherpa"
+final_backend = "sensevoice"
+partial_interval_millis = 200
 sensevoice_model_id = "sensevoice-int8"
 vad_model_id = "silero-vad"
 qwen3_model_id = "qwen3-asr-0.6b-int8"
@@ -81,7 +82,7 @@ command = "pw-record"
 sample_rate = 16000
 channels = 1
 format = "s16"
-chunk_millis = 200
+chunk_millis = 32
 
 [inject]
 prefer = "wtype"
@@ -109,11 +110,12 @@ port = 8766
 
 - `asr.batch_backend`：`fake`、`sensevoice`、`qwen3-sherpa`、`hybrid`。
 - `asr.streaming_backend`：仅 `sensevoice-vad`。
-- `asr.final_backend`：`none`、`sensevoice`、`qwen3-sherpa`。
+- `asr.final_backend`：`sensevoice`、`qwen3-sherpa`。旧配置的 `final_backend = "none"` 必须改为 `"sensevoice"`。
+- `asr.partial_interval_millis`：32 到 5000；默认 200 ms 的局部离线解码间隔。
 - `asr.language`：`auto`、`zh`、`en`、`ja`、`ko`、`yue`。
-- `asr.provider`：`cpu`、`cuda`。
+- `asr.provider`：`cpu`、`cuda`；该值原样传给 Sherpa。不可用提供方会导致识别失败，不会静默回退。
 - `asr.qwen3_max_segment_seconds`：大于 `0` 且不大于 `12`；限制单次 Qwen3-ASR 解码的音频时长，避免当前 512 上下文窗口截断。
-- 当前 Nix 闭包中的 `sherpa_onnx` 只有 CPU 和 OpenVINO Execution Provider；`asr.provider = "cuda"` 虽可通过配置校验，但会回退到 CPU，必须先打包 CUDA 运行时才能启用。
+- 实时 `[capture]`：仅 `sample_rate = 16000`、`channels = 1` 和 `format = "s16"`；`chunk_millis` 默认 32。
 - `inject.prefer`：`wtype`、`clipboard`。
 - `processing.provider`：`none`、`openai-compatible`、`ollama`。
 
@@ -161,7 +163,7 @@ type4me-linux model remove <id> --force
 8. 用同目录临时符号链接加 `os.replace()` 原子切换 `models/<id>/current`。
 9. 无论成功失败都清理 `.partial` 和暂存目录；失败不会改变旧 `current`。
 
-`model check` 不使用网络。它验证 `current` 目标范围、清单结构、模型 ID、目录版本、每个普通文件的大小与摘要，并报告 `missing`、`extra`、`corrupt`、`errors`。`remove` 不跟随符号链接；未安装时幂等返回，活动配置引用默认拒绝，只有 `--force` 可以覆盖。
+`model check` 不使用网络。它验证 `current` 目标范围、清单结构、模型 ID、目录版本、每个普通文件的大小与摘要，并报告 `missing`、`extra`、`corrupt`、`errors`。`resolve()` 每次安全读取 `current`，只在目标名和载荷路径与已成功完整检查的缓存匹配时复用结果；显式 `check()` 始终重新扫描和哈希全部清单文件，失败会逐出缓存。`remove` 不跟随符号链接；未安装时幂等返回，活动配置引用默认拒绝，只有 `--force` 可以覆盖。
 
 许可证不是完整性校验的一部分。SenseVoice 与 Silero VAD 上游标注为 MIT；Qwen3-ASR 上游标注为 Apache-2.0，但转换后归档未附许可证，重新分发许可尚未核实。权重由最终用户直接下载到 XDG 数据目录，Nix 包不携带也不镜像权重。
 
@@ -194,28 +196,28 @@ type4me-linux record --seconds 5 --backend hybrid --no-inject
 
 ## 实时会话与模拟流式识别
 
-`RawCaptureSession` 启动精确命令：
+`RawCaptureSession` 使用配置的命令、采样率、声道、格式与延迟；实时配置契约将其固定为：
 
 ```text
-pw-record --raw --rate 16000 --channels 1 --format s16 --latency 200ms -
+pw-record --raw --rate 16000 --channels 1 --format s16 --latency 32ms -
 ```
 
-stdout 以 6,400 字节，即 200 ms PCM16-LE 块读取，同时通过 `wave.writeframesraw()` 镜像到应用拥有的临时 WAV。所有退出路径都会关闭管道、发送 `terminate`、限时等待、必要时发送 `kill` 并回收子进程。最终校准暂时认领 WAV；会话完成或取消后释放并删除。调用方显式提供的 WAV 永不由采集器删除。
+stdout 默认以 1,024 字节，即 32 ms PCM16-LE 块读取，同时通过 `wave.writeframesraw()` 镜像到应用拥有的临时 WAV。EOF 的非空且 PCM16 对齐尾部会先交给 VAD/SenseVoice，之后才 `flush()`；奇数长度的尾部直接报错。所有退出路径都会关闭管道、发送 `terminate`、限时等待、必要时发送 `kill` 并回收子进程。最终校准暂时认领 WAV；会话完成或取消后释放并删除。调用方显式提供的 WAV 永不由采集器删除。
 
 `SenseVoiceVadStreamer` 是模拟流式层：
 
 1. `numpy.frombuffer(..., dtype="<i2") / 32768.0` 转换采集块。
 2. Silero VAD 按 512 样本窗口消费，默认阈值 `0.2`、最短语音 `0.2` 秒、最短静音 `0.5` 秒、最长语音 `20.0` 秒。
-3. 语音活动期间每累计 3,200 样本，即 200 ms，以新的 SenseVoice 离线流解码当前活动段；只在局部文本变化时发布。
+3. 32 ms 采集/读取块与局部解码节奏独立；默认每累计 3,200 样本，即 `asr.partial_interval_millis = 200` ms，以新的 SenseVoice 离线流解码当前活动段。单个回调跨越多个阈值也只解码一次，只在局部文本变化时发布。
 4. VAD 释放一段后只最终解码一次，追加到 `confirmed_segments` 并清空 `partial_text`。
 5. 正常停止时补齐最后 VAD 窗口、`flush()`、排空完成段，并解码剩余活动段。
 
-因此 `sensevoice-vad` 不表示 SenseVoice 原生 token 流。它是 VAD 分段加重复离线解码，代价和延迟特征必须按这一事实理解。
+因此 `sensevoice-vad` 不表示 SenseVoice 原生 token 流。它是 VAD 分段加重复离线解码，代价和延迟特征必须按这一事实理解。桌面应用持有一个惰性 `VoiceInputPipeline`；每个会话重新加载词汇并解析当前模型路径，在 SenseVoice 路径以及可选 Qwen 路径和热词未变化时复用 provider，发生变化时重建 provider。每个会话仍创建独立的 VAD streamer 和识别器流。
 
 停止后的权威文本规则：
 
+- `final_backend = "sensevoice"`：SenseVoice 拼接结果直接成为权威文本与 `sensevoice-vad` 最终后端。
 - `final_backend = "qwen3-sherpa"`：从完整临时 WAV 读取音频，按 `qwen3_max_segment_seconds` 分段执行 Qwen3-ASR 校准；成功后最终后端为 `hybrid`。
-- `final_backend = "none"` 或 `"sensevoice"`：SenseVoice 拼接结果直接成为权威文本。
 - Qwen3-ASR 缺 WAV、报错或返回空文本：先发布 `warning`，再以 `hybrid-fallback` 发布 SenseVoice 最终文本。
 
 片段替换和文本处理只接收最终权威文本。局部文本不会进入处理服务、历史或 `TextInjector`，最终文本最多注入一次。
@@ -360,7 +362,7 @@ type4me-linux history usage --days 1|7|30
 
 ## 常驻 GUI、控制总线与门户
 
-`Type4MeApplication` 是 `Adw.Application(application_id="io.github.vitus.Type4Me")`。`do_startup()` 调用 `hold()`，所以关闭主窗口只隐藏它；下一次桌面文件启动由会话 D-Bus 激活并呈现同一进程。显式退出按顺序取消控制器、关闭 PortalShortcuts 和 ControlBusService、释放 `hold()`、退出应用。窗口未聚焦时，`finalized` 和错误状态通过 `Gio.Notification` 发出；GTK4 托盘不是运行依赖。
+`Type4MeApplication` 是 `Adw.Application(application_id="io.github.vitus.Type4Me")`。`do_startup()` 调用 `hold()`，所以关闭主窗口只隐藏它；下一次桌面文件启动由会话 D-Bus 激活并呈现同一进程。显式退出按顺序取消控制器、关闭 PortalShortcuts 和 ControlBusService、释放 `hold()`、退出应用。录音开始、停止后识别、`finalized` 和错误状态通过 `Gio.Notification` 发出，窗口聚焦不抑制通知；同一录音代次的识别进度和结果使用稳定 ID 替换。GTK4 托盘不是运行依赖。
 
 主窗口页为语音输入、模式、词汇、模型、历史和设置。`ApplicationController` 是 UI 唯一实时会话所有者。它用 `ThreadPoolExecutor` 创建与运行会话，异步检查模型与读取历史，通过 GLib 调度器把不可变 `AppState` 更新送回主线程；开始、停止、取消按钮和快捷键最终调用同一个控制器状态机。
 

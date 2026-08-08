@@ -109,7 +109,8 @@ def fake_config(fake_runtime: Path) -> Path:
         [asr]
         batch_backend = "fake"
         streaming_backend = "sensevoice-vad"
-        final_backend = "qwen3-sherpa"
+        final_backend = "sensevoice"
+        partial_interval_millis = 200
         sensevoice_model_id = "sensevoice-int8"
         vad_model_id = "silero-vad"
         qwen3_model_id = "qwen3-asr-0.6b-int8"
@@ -126,7 +127,7 @@ def fake_config(fake_runtime: Path) -> Path:
         sample_rate = 16000
         channels = 1
         format = "s16"
-        chunk_millis = 200
+        chunk_millis = 32
 
         [inject]
         prefer = "wtype"

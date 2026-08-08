@@ -20,6 +20,8 @@ from .pipeline import VoiceInputPipeline
 from .vocabulary import VocabularyService
 
 APPLICATION_ID = "io.github.vitus.Type4Me"
+_RECORDING_NOTIFICATION_ID = "recognition-recording"
+_RESULT_NOTIFICATION_ID = "recognition-result"
 
 APPLICATION_CSS = b"""
 .type4me-shell { background: @window_bg_color; }
@@ -113,8 +115,8 @@ class Type4MeWindow(Adw.ApplicationWindow):
         config: Config | None = None,
     ) -> None:
         super().__init__(application=application, title="Type4Me")
-        self.set_default_size(920, 660)
-        self.set_size_request(520, 420)
+        self.set_default_size(680, 480)
+        self.set_size_request(480, 360)
         self._controller = controller
         self._vocabulary = vocabulary
         self._config = config or Config()
@@ -610,6 +612,8 @@ class Type4MeApplication(Adw.Application):
         control_bus_factory: ControlBusFactory | None = None,
         shortcuts_factory: ShortcutsFactory | None = None,
     ) -> None:
+        if GLib.get_application_name() != "Type4Me":
+            GLib.set_application_name("Type4Me")
         flags = Gio.ApplicationFlags.IS_SERVICE if service else Gio.ApplicationFlags.DEFAULT_FLAGS
         super().__init__(application_id=APPLICATION_ID, flags=flags)
         self.config = config
@@ -630,6 +634,7 @@ class Type4MeApplication(Adw.Application):
         self._quitting = False
         self.css_provider: Gtk.CssProvider | None = None
         self._shortcut_poll_source = 0
+        self._notification_generation = 0
 
     @property
     def controller(self) -> Controller:
@@ -665,6 +670,7 @@ class Type4MeApplication(Adw.Application):
                     vocabulary = VocabularyService(self.paths)
                 except Exception:
                     vocabulary = None
+            self.vocabulary = vocabulary
             self.window = Type4MeWindow(
                 application=self,
                 controller=self.controller,
@@ -682,16 +688,19 @@ class Type4MeApplication(Adw.Application):
         self.window.present()
 
     def notify_when_unfocused(self, title: str, body: str) -> None:
-        window = self.window
-        if window is not None and window.is_active():
-            return
         notification = Gio.Notification.new(title)
         notification.set_body(body)
         notification.set_default_action("app.show-window")
         if self._notification_sender is not None:
             self._notification_sender(notification)
         else:
-            self.send_notification(None, notification)
+            if title == "录音已开始":
+                self._notification_generation += 1
+            generation = max(self._notification_generation, 1)
+            base_id = (
+                _RECORDING_NOTIFICATION_ID if title == "录音已开始" else _RESULT_NOTIFICATION_ID
+            )
+            self.send_notification(f"{base_id}-{generation}", notification)
 
     def do_shutdown(self) -> None:
         if self._shortcut_poll_source:
@@ -835,19 +844,19 @@ class Type4MeApplication(Adw.Application):
         modes = ModesRepository(self.paths)
         history = HistoryStore(self.paths) if self.config.history.enabled else None
         models = ModelManager(self.paths)
-
-        def session_factory(request: object) -> object:
-            pipeline = VoiceInputPipeline(
-                self.config,
-                paths=self.paths,
-                modes=modes,
-                history=history,
-                model_manager=models,
-            )
-            return pipeline.create_session(request)  # type: ignore[arg-type]
+        vocabulary = self.vocabulary or VocabularyService(self.paths)
+        self.vocabulary = vocabulary
+        pipeline = VoiceInputPipeline(
+            self.config,
+            vocabulary=vocabulary,
+            paths=self.paths,
+            modes=modes,
+            history=history,
+            model_manager=models,
+        )
 
         return ApplicationController(
-            session_factory=session_factory,
+            session_factory=pipeline.create_session,
             modes=modes,
             history=history,
             models=models,

@@ -186,19 +186,53 @@ def test_start_is_nonblocking_and_events_reduce_only_on_scheduler() -> None:
     assert controller.state.session_state == "completed"
     assert controller.state.final_text == "完成内容"
     assert controller.state.last_event_sequence == 4
-    assert notifications == [("识别完成", "完成内容")]
+    assert notifications == [("录音已开始", "再次按快捷键结束录音。"), ("识别完成", "完成内容")]
+
+
+def test_final_notification_uses_short_preview_for_long_text() -> None:
+    scheduler = _Scheduler()
+    worker = _Worker()
+    notifications: list[tuple[str, str]] = []
+    long_text = "这是一段很长的识别文本" * 8
+    transcript = _transcript(long_text, final=True)
+    events = (
+        RecognitionEvent("ready", 1),
+        RecognitionEvent("finalized", 2, transcript=transcript),
+        RecognitionEvent("completed", 3, transcript=transcript),
+    )
+
+    controller = _controller(
+        lambda request: _ScriptedSession(request.event_sink, events),
+        scheduler=scheduler,
+        worker=worker,
+        notifier=lambda title, body: notifications.append((title, body)),
+    )
+    assert controller.toggle() is True
+    scheduler.drain()
+    worker.run_next()
+    scheduler.drain()
+
+    assert notifications == [
+        ("录音已开始", "再次按快捷键结束录音。"),
+        ("识别完成", f"{long_text[:47]}…"),
+    ]
 
 
 def test_one_session_ownership_and_hold_actions_are_idempotent() -> None:
     scheduler = _Scheduler()
     sessions: list[_BlockingSession] = []
+    notifications: list[tuple[str, str]] = []
 
     def factory(request):  # type: ignore[no-untyped-def]
         session = _BlockingSession(request.event_sink)
         sessions.append(session)
         return session
 
-    controller = _controller(factory, scheduler=scheduler)
+    controller = _controller(
+        factory,
+        scheduler=scheduler,
+        notifier=lambda title, body: notifications.append((title, body)),
+    )
     try:
         assert controller.hold_start() is True
         assert controller.hold_start() is False
@@ -208,9 +242,14 @@ def test_one_session_ownership_and_hold_actions_are_idempotent() -> None:
         scheduler.drain()
         assert controller.state.session_state == "recording"
         assert controller.hold_start() is False
+        assert notifications == [("录音已开始", "再次按快捷键结束录音。")]
 
         assert controller.hold_stop() is True
         assert controller.hold_stop() is False
+        assert notifications == [
+            ("录音已开始", "再次按快捷键结束录音。"),
+            ("正在识别", "正在生成最终文本。"),
+        ]
         assert _wait_until(lambda: sessions[0].finished.is_set())
         scheduler.drain()
 
@@ -219,6 +258,11 @@ def test_one_session_ownership_and_hold_actions_are_idempotent() -> None:
         assert sessions[0].cancel_calls == 0
         assert controller.state.session_state == "completed"
         assert controller.state.final_text == "最终文本"
+        assert notifications == [
+            ("录音已开始", "再次按快捷键结束录音。"),
+            ("正在识别", "正在生成最终文本。"),
+            ("识别完成", "最终文本"),
+        ]
     finally:
         controller.close()
 
@@ -276,7 +320,10 @@ def test_error_and_cancel_terminal_states_are_preserved() -> None:
     scheduler.drain()
     assert controller.state.session_state == "error"
     assert controller.state.error == "识别失败：模型损坏"
-    assert notifications == [("识别失败", "识别失败：模型损坏")]
+    assert notifications == [
+        ("录音已开始", "再次按快捷键结束录音。"),
+        ("识别失败", "识别失败：模型损坏"),
+    ]
 
     cancel_scheduler = _Scheduler()
     sessions: list[_BlockingSession] = []
@@ -624,7 +671,10 @@ def test_warning_ordering_and_empty_final_notification_contract() -> None:
     assert controller.state.session_state == "completed"
     assert controller.state.warnings == ("校准不可用",)
     assert controller.state.last_event_sequence == 5
-    assert notifications == [("识别完成", "语音输入已完成。")]
+    assert notifications == [
+        ("录音已开始", "再次按快捷键结束录音。"),
+        ("识别完成", "语音输入已完成。"),
+    ]
     assert snapshots[-1] is controller.state
 
 
@@ -748,7 +798,11 @@ def test_active_session_control_worker_failures_are_reported(action: str, failur
             return controller.state.error == f"识别失败：{failure}"
 
         assert _wait_until(failure_arrived)
-        assert notifications == [("识别失败", f"识别失败：{failure}")]
+        expected_notifications = [("录音已开始", "再次按快捷键结束录音。")]
+        if action == "toggle":
+            expected_notifications.append(("正在识别", "正在生成最终文本。"))
+        expected_notifications.append(("识别失败", f"识别失败：{failure}"))
+        assert notifications == expected_notifications
         sessions[0].release.set()
         assert _wait_until(lambda: len(scheduler.calls) > 0)
         scheduler.drain()

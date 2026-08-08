@@ -91,7 +91,13 @@ class VoiceInputPipeline:
         self.processor = processor or _create_processor(config)
         self._capture_factory = capture_factory or (lambda: RawCaptureSession(config.capture))
         self._streamer_factory = streamer_factory or SenseVoiceVadStreamer
-        self._calibrator = calibrator
+        self._live_sensevoice: SenseVoiceProvider | None = None
+        self._live_sensevoice_path: Path | None = None
+        self._configured_calibrator: ASRProvider | None = calibrator
+        self._live_calibrator: ASRProvider | None = None
+        self._live_calibrator_path: Path | None = None
+        self._live_calibrator_hotwords: tuple[str, ...] | None = None
+        self._live_calibrator_ready = False
 
     def run_once(
         self,
@@ -128,22 +134,20 @@ class VoiceInputPipeline:
         return PipelineResult(recognition=recognition, injection=injection)
 
     def create_session(self, request: RecognitionRequest) -> RecognitionSession:
+        self.vocabulary.reload()
         mode = self.modes.resolve(request.mode)
         snapshot = self.clipboard.snapshot()
         started_at = time.monotonic()
         processing_state: dict[str, TextProcessResult | None] = {"result": None}
         session_state: dict[str, RecognitionSession] = {}
 
-        sensevoice = SenseVoiceProvider(
-            self.config.asr,
-            model_resolver=self.model_manager.resolve,
-        )
+        sensevoice = self._get_live_sensevoice()
         streamer = self._streamer_factory(
             self.config.asr,
             sensevoice,
             model_resolver=self.model_manager.resolve,
         )
-        calibrator = self._live_calibrator()
+        calibrator = self._get_live_calibrator()
 
         def process_text(raw_text: str) -> str:
             snippet_text = self.vocabulary.apply_snippets(raw_text)
@@ -226,18 +230,49 @@ class VoiceInputPipeline:
             return TextProcessResult(text, "bypassed", "none")
         return self.processor.process(request)
 
-    def _live_calibrator(self) -> ASRProvider | None:
-        if self._calibrator is not None:
-            return self._calibrator
-        if self.config.asr.final_backend in {"", "none", "sensevoice"}:
-            return None
-        if self.config.asr.final_backend != "qwen3-sherpa":
+    def _get_live_sensevoice(self) -> SenseVoiceProvider:
+        model_dir = self.model_manager.resolve(self.config.asr.sensevoice_model_id)
+        if self._live_sensevoice is None or self._live_sensevoice_path != model_dir:
+            self._live_sensevoice = SenseVoiceProvider(
+                self.config.asr,
+                model_dir=model_dir,
+            )
+            self._live_sensevoice_path = model_dir
+        return self._live_sensevoice
+
+    def _get_live_calibrator(self) -> ASRProvider | None:
+        model_dir: Path | None = None
+        hotwords: tuple[str, ...] | None = None
+        if self._configured_calibrator is not None:
+            if self._live_calibrator_ready:
+                return self._live_calibrator
+            calibrator = self._configured_calibrator
+        elif self.config.asr.final_backend == "sensevoice":
+            if self._live_calibrator_ready:
+                return self._live_calibrator
+            calibrator = None
+        elif self.config.asr.final_backend == "qwen3-sherpa":
+            model_dir = self.model_manager.resolve(self.config.asr.qwen3_model_id)
+            hotwords = self.vocabulary.list_hotwords()
+            if (
+                self._live_calibrator_ready
+                and self._live_calibrator_path == model_dir
+                and self._live_calibrator_hotwords == hotwords
+            ):
+                return self._live_calibrator
+            calibrator = Qwen3SherpaProvider(
+                self.config.asr,
+                model_dir=model_dir,
+                hotwords=hotwords,
+            )
+        else:
             raise ValueError(f"不支持的最终识别后端：{self.config.asr.final_backend}")
-        return Qwen3SherpaProvider(
-            self.config.asr,
-            hotwords=self.vocabulary.list_hotwords(),
-            model_resolver=self.model_manager.resolve,
-        )
+
+        self._live_calibrator = calibrator
+        self._live_calibrator_path = model_dir
+        self._live_calibrator_hotwords = hotwords
+        self._live_calibrator_ready = True
+        return calibrator
 
     def _write_history(
         self,

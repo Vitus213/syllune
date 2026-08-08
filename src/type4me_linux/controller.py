@@ -17,6 +17,7 @@ ScheduledCall: TypeAlias = Callable[[], object]
 Scheduler: TypeAlias = Callable[[ScheduledCall], object]
 StateListener: TypeAlias = Callable[[AppState], object]
 Notifier: TypeAlias = Callable[[str, str], object]
+_NOTIFICATION_PREVIEW_LIMIT = 48
 
 
 class LiveSession(Protocol):
@@ -254,6 +255,8 @@ class ApplicationController:
             token = self._generation
             session = self._session
         self._publish_for(token, lambda state: replace(state, session_state="stopping"))
+        if self._notifier is not None:
+            self._notifier("正在识别", "正在生成最终文本。")
         if session is not None:
             self._worker.submit(self._stop_session, token, session)
         return True
@@ -322,6 +325,7 @@ class ApplicationController:
             changes: dict[str, object] = {"last_event_sequence": event.sequence}
             if event.type == "ready":
                 changes["session_state"] = "recording"
+                notify = ("录音已开始", "再次按快捷键结束录音。")
             elif event.type == "transcript":
                 changes["transcript"] = event.transcript
             elif event.type == "warning":
@@ -336,6 +340,8 @@ class ApplicationController:
             elif event.type == "finalized":
                 changes.update(session_state="completed", transcript=event.transcript)
                 text = "" if event.transcript is None else event.transcript.authoritative_text
+                if len(text) > _NOTIFICATION_PREVIEW_LIMIT:
+                    text = f"{text[: _NOTIFICATION_PREVIEW_LIMIT - 1]}…"
                 notify = ("识别完成", text or "语音输入已完成。")
             elif event.type == "completed":
                 if state.session_state not in {"error", "cancelled"}:
