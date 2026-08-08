@@ -137,11 +137,11 @@
                 pkgs.gsettings-desktop-schemas
               ]
             }"
-            "--prefix GIO_EXTRA_MODULES : ${
-              pkgs.lib.makeSearchPath "lib/gio/modules" [ pkgs.glib-networking ]
-            }"
-          ] ++ pkgs.lib.optional (system == "x86_64-linux")
-            "--prefix LD_PRELOAD : ${pkgs.cudaPackages_12.cuda_nvrtc.lib}/lib/libnvrtc.so.12";
+            "--prefix GIO_EXTRA_MODULES : ${pkgs.lib.makeSearchPath "lib/gio/modules" [ pkgs.glib-networking ]}"
+          ]
+          ++ pkgs.lib.optional (
+            system == "x86_64-linux"
+          ) "--prefix LD_PRELOAD : ${pkgs.cudaPackages_12.cuda_nvrtc.lib}/lib/libnvrtc.so.12";
 
           preFixup = ''
             makeWrapperArgs+=("''${gappsWrapperArgs[@]}")
@@ -191,6 +191,9 @@
 
           PYTHONPATH = "${sherpaOnnx.python}";
           TYPE4ME_NIXPKGS = "${pkgs.path}";
+          LD_PRELOAD = pkgs.lib.optionalString (
+            system == "x86_64-linux"
+          ) "${pkgs.cudaPackages_12.cuda_nvrtc.lib}/lib/libnvrtc.so.12";
         };
 
         formatter = pkgs.writeShellApplication {
