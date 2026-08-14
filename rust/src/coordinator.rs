@@ -55,6 +55,7 @@ pub enum OutputEvent {
 pub struct SessionPlan {
     pub backend: String,
     pub inject: bool,
+    pub mode_id: String,
     pub queue_capacity: usize,
     pub send_deadline: Duration,
     pub finish_timeout: Duration,
@@ -66,6 +67,7 @@ impl SessionPlan {
         Self {
             backend: backend.into(),
             inject,
+            mode_id: "quick".to_owned(),
             queue_capacity: DEFAULT_QUEUE_CAPACITY,
             send_deadline: DEFAULT_SEND_DEADLINE,
             finish_timeout: DEFAULT_FINISH_TIMEOUT,
@@ -98,6 +100,28 @@ pub trait TextInjector {
     async fn inject(&mut self, text: &str) -> InjectionResult;
 }
 
+/// Final-text processing boundary. `quick` mode never calls this; other
+/// modes send the authoritative transcript through it.
+pub trait TextProcessor {
+    async fn process(&mut self, mode_id: &str, text: &str) -> Result<String, String>;
+}
+
+/// History boundary. Only successful sessions with authoritative text are
+/// recorded; cancelled, failed and empty sessions never reach here.
+pub trait HistoryRecorder {
+    fn record(&mut self, entry: HistoryEntry);
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryEntry {
+    pub raw_text: String,
+    pub processed_text: Option<String>,
+    pub final_text: String,
+    pub processing_mode: String,
+    pub status: String,
+    pub backend: String,
+}
+
 pub trait EventSink {
     fn emit(&mut self, event: OutputEvent) -> io::Result<()>;
 }
@@ -126,18 +150,22 @@ enum Step<T> {
 
 /// Run one recognition session to completion and return the process exit
 /// code: `0` success, `1` failure, `130` cancellation.
-pub async fn run_session<C, T, J, S>(
+pub async fn run_session<C, T, P, J, H, S>(
     plan: SessionPlan,
     mut capture: C,
     mut transport: T,
+    mut processor: P,
     mut injector: J,
+    mut history: H,
     control: mpsc::Receiver<ControlCommand>,
     sink: &mut S,
 ) -> i32
 where
     C: AudioCapture,
     T: BackendTransport,
+    P: TextProcessor,
     J: TextInjector,
+    H: HistoryRecorder,
     S: EventSink,
 {
     let mut control = ControlInput::new(control);
@@ -326,12 +354,33 @@ where
     }
 
     match session.take_injection_text() {
-        Some(text) => {
+        Some(raw_text) => {
+            let (final_text, processed_text) = if plan.mode_id == "quick" {
+                (raw_text.clone(), None)
+            } else {
+                match processor.process(&plan.mode_id, &raw_text).await {
+                    Ok(processed) => (processed.clone(), Some(processed)),
+                    Err(error) => {
+                        let _ = sink.emit(OutputEvent::Warning(format!(
+                            "processing failed, keeping recognized text: {error}"
+                        )));
+                        (raw_text.clone(), None)
+                    }
+                }
+            };
             let injection = if plan.inject {
-                Some(injector.inject(&text).await)
+                Some(injector.inject(&final_text).await)
             } else {
                 None
             };
+            history.record(HistoryEntry {
+                raw_text,
+                processed_text,
+                final_text,
+                processing_mode: plan.mode_id.clone(),
+                status: "completed".to_owned(),
+                backend: plan.backend.clone(),
+            });
             let _ = sink.emit(OutputEvent::Finalized { injection });
         }
         None => {

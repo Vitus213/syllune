@@ -41,7 +41,16 @@ async fn run_fixture(
     }
     let code = tokio::time::timeout(
         Duration::from_secs(5),
-        run_session(plan, capture, transport, injector, control_rx, &mut sink),
+        run_session(
+            plan,
+            capture,
+            transport,
+            common::CountingProcessor::noop(),
+            injector,
+            common::RecordingHistory::new(),
+            control_rx,
+            &mut sink,
+        ),
     )
     .await
     .expect("run_session must terminate");

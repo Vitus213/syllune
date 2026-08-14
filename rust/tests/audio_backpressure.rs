@@ -1,7 +1,8 @@
 mod common;
 
 use common::{
-    entries, new_log, FakeCapture, RecordingInjector, RecordingSink, ScriptedTransport,
+    entries, new_log, CountingProcessor, FakeCapture, RecordingHistory, RecordingInjector,
+    RecordingSink, ScriptedTransport,
 };
 use std::time::Duration;
 use syllune::coordinator::{run_session, ControlCommand, OutputEvent, SessionPlan};
@@ -37,7 +38,16 @@ async fn run_fixture(
     let mut sink = RecordingSink::default();
     let code = tokio::time::timeout(
         Duration::from_secs(5),
-        run_session(plan, capture, transport, injector, control_rx, &mut sink),
+        run_session(
+            plan,
+            capture,
+            transport,
+            CountingProcessor::noop(),
+            injector,
+            RecordingHistory::new(),
+            control_rx,
+            &mut sink,
+        ),
     )
     .await
     .expect("run_session must terminate");

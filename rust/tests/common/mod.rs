@@ -10,8 +10,8 @@ use std::time::Duration;
 
 use parking_lot::Mutex;
 use syllune::coordinator::{
-    AudioCapture, BackendTransport, ControlCommand, EventSink, InjectionResult, OutputEvent,
-    TextInjector,
+    AudioCapture, BackendTransport, ControlCommand, EventSink, HistoryEntry, HistoryRecorder,
+    InjectionResult, OutputEvent, TextInjector, TextProcessor,
 };
 use syllune::realtime::RealtimeEvent;
 use tokio::sync::mpsc;
@@ -255,5 +255,71 @@ impl TextInjector for RecordingInjector {
             method: "fake".to_owned(),
             message: String::new(),
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct CountingProcessor {
+    output: Result<String, String>,
+    state: Arc<Mutex<(usize, Option<String>)>>,
+}
+
+impl CountingProcessor {
+    pub fn ok(output: String) -> Self {
+        Self {
+            output: Ok(output),
+            state: Arc::new(Mutex::new((0, None))),
+        }
+    }
+
+    pub fn failing(error: String) -> Self {
+        Self {
+            output: Err(error),
+            state: Arc::new(Mutex::new((0, None))),
+        }
+    }
+
+    pub fn noop() -> Self {
+        Self::ok(String::new())
+    }
+
+    pub fn calls(&self) -> usize {
+        self.state.lock().0
+    }
+
+    pub fn last_input(&self) -> Option<String> {
+        self.state.lock().1.clone()
+    }
+}
+
+impl TextProcessor for CountingProcessor {
+    async fn process(&mut self, _mode_id: &str, text: &str) -> Result<String, String> {
+        {
+            let mut state = self.state.lock();
+            state.0 += 1;
+            state.1 = Some(text.to_owned());
+        }
+        self.output.clone()
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct RecordingHistory {
+    entries: Arc<Mutex<Vec<HistoryEntry>>>,
+}
+
+impl RecordingHistory {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn records(&self) -> Vec<HistoryEntry> {
+        self.entries.lock().clone()
+    }
+}
+
+impl HistoryRecorder for RecordingHistory {
+    fn record(&mut self, entry: HistoryEntry) {
+        self.entries.lock().push(entry);
     }
 }

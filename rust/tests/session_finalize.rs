@@ -98,7 +98,16 @@ async fn run_cloud_fixture(
     transport.control_tx = Some(control_tx);
     let code = tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        run_session(plan, capture, transport, injector, control_rx, &mut sink),
+        run_session(
+            plan,
+            capture,
+            transport,
+            common::CountingProcessor::noop(),
+            injector,
+            common::RecordingHistory::new(),
+            control_rx,
+            &mut sink,
+        ),
     )
     .await
     .expect("run_session must terminate");
@@ -205,7 +214,16 @@ async fn stop_without_speech_completes_without_injection_and_is_diagnosable() {
     });
     let code = tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        run_session(plan, capture, transport, injector, control_rx, &mut sink),
+        run_session(
+            plan,
+            capture,
+            transport,
+            common::CountingProcessor::noop(),
+            injector,
+            common::RecordingHistory::new(),
+            control_rx,
+            &mut sink,
+        ),
     )
     .await
     .expect("run_session must terminate");
