@@ -22,8 +22,8 @@ enum Command {
     Record,
     Model(ModelArgs),
     Doctor,
-    Mode,
-    History,
+    Mode(ModeArgs),
+    History(HistoryArgs),
     Daemon,
 }
 
@@ -53,6 +53,56 @@ enum ModelAction {
     Install { id: String },
     Check { id: String },
     Remove { id: String },
+}
+
+#[derive(Debug, Args)]
+struct ModeArgs {
+    #[command(subcommand)]
+    action: ModeAction,
+    #[arg(long, global = true)]
+    id: Option<String>,
+    #[arg(long, global = true)]
+    name: Option<String>,
+    #[arg(long, global = true)]
+    prompt: Option<String>,
+    #[arg(long, global = true)]
+    processing_label: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum ModeAction {
+    List,
+    Reload,
+    Add,
+    Update,
+    Remove,
+}
+
+#[derive(Debug, Args)]
+struct HistoryArgs {
+    #[command(subcommand)]
+    action: HistoryAction,
+    #[arg(long, global = true)]
+    ids: Vec<String>,
+    #[arg(long, global = true)]
+    all: bool,
+    #[arg(long, global = true, default_value_t = 50)]
+    limit: i64,
+    #[arg(long, global = true)]
+    cursor: Option<String>,
+    #[arg(long, global = true)]
+    destination: Option<PathBuf>,
+    #[arg(long, global = true, default_value_t = 7)]
+    days: i64,
+}
+
+#[derive(Debug, Subcommand)]
+enum HistoryAction {
+    List,
+    Delete,
+    Export,
+    Totals,
+    Usage,
 }
 
 #[tokio::main]
@@ -85,6 +135,44 @@ async fn main() {
             },
             args.json,
         ),
+        Command::Mode(args) => {
+            let action = match args.action {
+                ModeAction::List => "list",
+                ModeAction::Reload => "reload",
+                ModeAction::Add => "add",
+                ModeAction::Update => "update",
+                ModeAction::Remove => "remove",
+            };
+            syllune::mode_cmd::run(
+                action,
+                syllune::mode_cmd::ModeArgs {
+                    id: args.id,
+                    name: args.name,
+                    prompt: args.prompt,
+                    processing_label: args.processing_label,
+                },
+            )
+        }
+        Command::History(args) => {
+            let action = match args.action {
+                HistoryAction::List => "list",
+                HistoryAction::Delete => "delete",
+                HistoryAction::Export => "export",
+                HistoryAction::Totals => "totals",
+                HistoryAction::Usage => "usage",
+            };
+            syllune::history_cmd::run(
+                action,
+                syllune::history_cmd::HistoryArgs {
+                    ids: args.ids,
+                    all: args.all,
+                    limit: args.limit,
+                    cursor: args.cursor,
+                    destination: args.destination,
+                    days: args.days,
+                },
+            )
+        }
         Command::Doctor => {
             println!("Syllune doctor");
             0

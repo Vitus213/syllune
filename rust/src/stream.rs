@@ -71,20 +71,21 @@ async fn run_cloud(config: AppConfig, options: StreamOptions) -> Result<i32, Str
     if config.cloud.api_key.trim().is_empty() {
         return Err(StreamError::MissingApiKey);
     }
+    let pipeline = build_pipeline(&config, &options)?;
     let transport = RealtimeSession::connect(
         &config.cloud.realtime_endpoint,
         &config.cloud.api_key,
         &config.cloud.realtime_model,
     )
     .await?;
-    let plan = session_plan(&options, "cloud-realtime");
+    let plan = session_plan(&options, "cloud-realtime", &pipeline.mode_id);
     let code = crate::coordinator::run_session(
         plan,
         PwCapture::default(),
         CloudTransport(transport),
-        NoopProcessor,
+        pipeline.processor,
         WtypeInjector,
-        DiscardHistory,
+        pipeline.history,
         control_receiver(),
         &mut StdoutSink::new(options.json),
     )
@@ -93,13 +94,14 @@ async fn run_cloud(config: AppConfig, options: StreamOptions) -> Result<i32, Str
 }
 
 async fn run_local(config: AppConfig, options: StreamOptions) -> Result<i32, StreamError> {
-    let model_dir = match config.asr.local_model_dir {
+    let model_dir = match config.asr.local_model_dir.clone() {
         Some(path) => path,
         None => match resolve_managed_model(&options) {
             Ok(path) => path,
             Err(code) => return Ok(code),
         },
     };
+    let pipeline = build_pipeline(&config, &options)?;
     let recognizer = match crate::local_asr::LocalStreamingRecognizer::new(&model_dir) {
         Ok(recognizer) => recognizer,
         Err(error) => {
@@ -109,19 +111,106 @@ async fn run_local(config: AppConfig, options: StreamOptions) -> Result<i32, Str
             return Ok(1);
         }
     };
-    let plan = session_plan(&options, "local-streaming");
+    let plan = session_plan(&options, "local-streaming", &pipeline.mode_id);
     let code = crate::coordinator::run_session(
         plan,
         PwCapture::default(),
         LocalTransport::new(recognizer),
-        NoopProcessor,
+        pipeline.processor,
         WtypeInjector,
-        DiscardHistory,
+        pipeline.history,
         control_receiver(),
         &mut StdoutSink::new(options.json),
     )
     .await;
     Ok(code)
+}
+
+struct Pipeline {
+    mode_id: String,
+    processor: PipelineProcessor,
+    history: SqliteHistory,
+}
+
+/// Build the final-text pipeline once, before any capture starts: unknown
+/// modes and invalid processing config are startup errors.
+fn build_pipeline(config: &AppConfig, options: &StreamOptions) -> Result<Pipeline, StreamError> {
+    let repository = crate::modes::ModesRepository::open(modes_path())
+        .map_err(|error| StreamError::Capture(error.to_string()))?;
+    let mode = repository
+        .resolve(Some(&options.mode))
+        .map_err(|error| StreamError::Capture(error.to_string()))?;
+    let mode_id = mode.id.clone();
+
+    let chat = crate::processing::from_config(&config.processing)
+        .map_err(|error| StreamError::Capture(error.to_string()))?;
+
+    let store = if config.history.enabled {
+        crate::history::HistoryStore::open(
+            crate::models::default_data_dir().join("history.sqlite3"),
+        )
+        .ok()
+    } else {
+        None
+    };
+
+    let prompts: Vec<(String, String)> = repository
+        .list()
+        .iter()
+        .map(|mode| (mode.id.clone(), mode.prompt.clone()))
+        .collect();
+
+    Ok(Pipeline {
+        mode_id: mode_id.clone(),
+        processor: PipelineProcessor { prompts, chat },
+        history: SqliteHistory { store },
+    })
+}
+
+fn modes_path() -> std::path::PathBuf {
+    let root = std::env::var("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_owned()))
+                .join(".config")
+        });
+    root.join("syllune").join("modes.json")
+}
+
+struct PipelineProcessor {
+    prompts: Vec<(String, String)>,
+    chat: Option<crate::processing::ChatProcessor<crate::processing::UreqPoster>>,
+}
+
+impl TextProcessor for PipelineProcessor {
+    async fn process(&mut self, mode_id: &str, text: &str) -> Result<String, String> {
+        let prompt = self
+            .prompts
+            .iter()
+            .find(|(id, _)| id == mode_id)
+            .map(|(_, prompt)| crate::modes::render_template(prompt, text, "", ""))
+            .unwrap_or_else(|| text.to_owned());
+        let Some(chat) = self.chat.clone() else {
+            return Err("no text processing provider configured".to_owned());
+        };
+        tokio::task::spawn_blocking(move || chat.process(&prompt))
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error.to_string())
+    }
+}
+
+struct SqliteHistory {
+    store: Option<crate::history::HistoryStore>,
+}
+
+impl HistoryRecorder for SqliteHistory {
+    fn record(&mut self, entry: HistoryEntry) {
+        if let Some(store) = &self.store {
+            let backend = entry.backend.clone();
+            let _ = store.insert(&entry, &backend);
+        }
+    }
 }
 
 /// Resolve the managed streaming model freshly through the pointer and
@@ -169,9 +258,9 @@ fn resolve_managed_model(options: &StreamOptions) -> Result<std::path::PathBuf, 
     }
 }
 
-fn session_plan(options: &StreamOptions, backend: &str) -> SessionPlan {
+fn session_plan(options: &StreamOptions, backend: &str, mode_id: &str) -> SessionPlan {
     let mut plan = SessionPlan::new(backend, options.inject);
-    plan.mode_id = options.mode.clone();
+    plan.mode_id = mode_id.to_owned();
     plan
 }
 
@@ -452,19 +541,3 @@ fn wtype_result(ok: bool, message: &str) -> InjectionResult {
     }
 }
 
-/// Processing is not wired in this build: quick mode passes text through and
-/// other modes receive a processing failure warning that keeps the
-/// recognized text, matching the coordinator contract.
-struct NoopProcessor;
-
-impl TextProcessor for NoopProcessor {
-    async fn process(&mut self, _mode_id: &str, _text: &str) -> Result<String, String> {
-        Err("no text processing provider configured".to_owned())
-    }
-}
-
-struct DiscardHistory;
-
-impl HistoryRecorder for DiscardHistory {
-    fn record(&mut self, _entry: HistoryEntry) {}
-}

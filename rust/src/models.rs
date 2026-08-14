@@ -602,6 +602,10 @@ pub fn default_cache_dir() -> PathBuf {
     xdg_dir("XDG_CACHE_HOME", ".cache").join("syllune")
 }
 
+pub fn default_config_dir() -> PathBuf {
+    xdg_dir("XDG_CONFIG_HOME", ".config").join("syllune")
+}
+
 fn xdg_dir(variable: &str, fallback: &str) -> PathBuf {
     std::env::var(variable)
         .map(PathBuf::from)

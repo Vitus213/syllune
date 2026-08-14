@@ -31,6 +31,7 @@ pub trait HttpPoster {
     ) -> Result<(u16, String), ProcessingError>;
 }
 
+#[derive(Clone)]
 pub struct UreqPoster;
 
 impl HttpPoster for UreqPoster {
@@ -64,6 +65,7 @@ impl HttpPoster for UreqPoster {
     }
 }
 
+#[derive(Clone)]
 pub struct ChatProcessor<H: HttpPoster> {
     pub provider: String,
     pub base_url: String,
