@@ -36,4 +36,4 @@
 
 ## 6. 完成验证
 
-- [ ] 6.1 [All Requirements / Scenarios] 更新 README、架构、配置与人工迁移说明；运行 `nix develop -c cargo fmt --check`、`nix develop -c cargo clippy --all-targets --all-features -- -D warnings`、`nix develop -c cargo test --all-targets`、`nix flake check -L`、`nix build -L`，并附上 5.1/5.2 的真实报告路径。任何真实门禁未运行或未满足时，任务 MUST 保持未完成且不得宣称“1 秒端到端已交付”。
+- [x] 6.1 [All Requirements / Scenarios] 更新 README、架构、配置与人工迁移说明；运行 `nix develop -c cargo fmt --check`、`nix develop -c cargo clippy --all-targets --all-features -- -D warnings`、`nix develop -c cargo test --all-targets`、`nix flake check -L`、`nix build -L`，并附上 5.1/5.2 的真实报告路径。任何真实门禁未运行或未满足时，任务 MUST 保持未完成且不得宣称"1 秒端到端已交付"。
