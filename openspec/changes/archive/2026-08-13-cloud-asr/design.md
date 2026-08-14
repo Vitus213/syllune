@@ -30,7 +30,7 @@ class CloudASRResponseError(CloudASRError): ...        # 响应结构/空文本
 @dataclass(frozen=True)
 class CloudConfig:
     base_url: str = "https://dashscope.aliyuncs.com"   # 主机，不含路径
-    api_key_env: str = "BAILIAN_API_KEY"
+    api_key: str = ""
     model: str = "qwen3-asr-flash-2026-02-10"
     timeout_seconds: float = 60.0
 ```

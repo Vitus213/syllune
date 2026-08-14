@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-08-10
+goal: 改善本地Qwen最终校准的长音频连续性与回退可见性

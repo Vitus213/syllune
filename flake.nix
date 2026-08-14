@@ -20,18 +20,48 @@
           config.allowUnfree = true;
         };
         python = pkgs.python312;
+        onnxruntime =
+          if system == "x86_64-linux" then
+            pkgs.onnxruntime.override {
+              cudaSupport = true;
+              cudaPackages = pkgs.cudaPackages_12;
+            }
+          else
+            pkgs.onnxruntime;
         sherpaOnnx = pkgs.sherpa-onnx.override (
           {
             python3Packages = python.pkgs;
           }
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
             cudaSupport = true;
-            onnxruntime = pkgs.onnxruntime.override {
-              cudaSupport = true;
-              cudaPackages = pkgs.cudaPackages_12;
-            };
+            inherit onnxruntime;
           }
         );
+        sherpaRuntimeLib = pkgs.symlinkJoin {
+          name = "syllune-sherpa-runtime-libs";
+          paths = [ sherpaOnnx onnxruntime ];
+        };
+        syllune = pkgs.rustPlatform.buildRustPackage {
+          pname = "syllune";
+          version = "0.1.0";
+          src = ./rust;
+          cargoLock.lockFile = ./rust/Cargo.lock;
+          nativeBuildInputs = [ pkgs.makeWrapper pkgs.pkg-config ];
+          buildInputs = [ sherpaOnnx onnxruntime ];
+          SHERPA_ONNX_LIB_DIR = sherpaRuntimeLib + "/lib";
+          postInstall = ''
+            wrapProgram "$out/bin/syllune" \
+              --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.pipewire pkgs.wtype pkgs.wl-clipboard ]} \
+              --prefix LD_LIBRARY_PATH : ${sherpaRuntimeLib}/lib
+          '';
+          meta = {
+            description = "Fast realtime voice input for Linux";
+            homepage = "https://github.com/vitus/type4me-linux";
+            license = pkgs.lib.licenses.mit;
+            mainProgram = "syllune";
+            platforms = pkgs.lib.platforms.linux;
+          };
+        };
         pythonEnv = python.withPackages (
           ps: with ps; [
             numpy
@@ -159,8 +189,10 @@
       {
         packages.default = type4me-linux;
         packages.type4me-linux = type4me-linux;
+        packages.syllune = syllune;
 
         apps.default = flake-utils.lib.mkApp { drv = type4me-linux; };
+        apps.syllune = flake-utils.lib.mkApp { drv = syllune; };
 
         checks.default = type4me-linux;
 
@@ -171,8 +203,11 @@
             pkgs.pre-commit
             pkgs.just
             pkgs.nixfmt
+            pkgs.cargo
+            pkgs.rustc
             pkgs.pipewire
             sherpaOnnx
+            onnxruntime
             pkgs.wl-clipboard
             pkgs.wtype
             pkgs.xvfb
@@ -190,6 +225,8 @@
           ];
 
           PYTHONPATH = "${sherpaOnnx.python}";
+          SHERPA_ONNX_LIB_DIR = "${sherpaRuntimeLib}/lib";
+          LD_LIBRARY_PATH = "${sherpaRuntimeLib}/lib";
           TYPE4ME_NIXPKGS = "${pkgs.path}";
           LD_PRELOAD = pkgs.lib.optionalString (
             system == "x86_64-linux"

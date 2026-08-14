@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
-import os
+
 import time
 import urllib.error
 import urllib.request
@@ -39,13 +39,6 @@ class CloudASRRequestError(CloudASRError):
 
 class CloudASRResponseError(CloudASRError):
     """响应结构不符合预期或文本为空。"""
-
-
-def resolve_api_key(env_name: str) -> str:
-    value = os.environ.get(env_name, "")
-    if not value.strip():
-        raise CloudASRAuthenticationError(f"缺少云端语音识别密钥：请设置环境变量 {env_name}。")
-    return value
 
 
 def needs_system_prompt(model: str) -> bool:
@@ -153,8 +146,15 @@ class CloudASRClient:
     def _extract_text(self, body: bytes) -> str:
         try:
             parsed = json.loads(body.decode("utf-8"))
-            text = parsed["output"]["choices"][0]["message"]["content"][0]["text"]
+            content = parsed["output"]["choices"][0]["message"].get("content") or []
         except (UnicodeDecodeError, json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
+            raise CloudASRResponseError(f"云端语音识别响应格式无效：{body[:200]!r}") from exc
+        if not content:
+            # 静音/空音频时云端返回空 content，视为"没有转写文本"而非错误。
+            return ""
+        try:
+            text = content[0]["text"]
+        except (KeyError, IndexError, TypeError) as exc:
             raise CloudASRResponseError(f"云端语音识别响应格式无效：{body[:200]!r}") from exc
         if not isinstance(text, str) or not text.strip():
             raise CloudASRResponseError("云端语音识别返回的转写文本为空。")
@@ -184,7 +184,8 @@ def _load_wav_pcm16_bytes(path: Path) -> bytes:
 class CloudASRProvider:
     """以 `ASRProvider` 协议封装的云端批量转写（backend 恒为 "cloud"）。
 
-    凭据遵循仓库约定：每次请求时从 `api_key_env` 环境变量读取，不落盘。
+    凭据直接读取配置节 `[cloud].api_key`（与 omp models.yml 的 apiKey 字段
+    一致），不依赖环境变量。
     """
 
     def __init__(
@@ -210,7 +211,11 @@ class CloudASRProvider:
         return self.transcribe_pcm16(pcm16)
 
     def transcribe_pcm16(self, pcm16: bytes) -> str:
-        api_key = resolve_api_key(self.cloud.api_key_env)
+        api_key = self.cloud.api_key.strip()
+        if not api_key:
+            raise CloudASRAuthenticationError(
+                "未配置云端语音识别密钥：请在配置节 [cloud] 设置 api_key。"
+            )
         client = self._client_factory(
             base_url=self.cloud.base_url,
             api_key=api_key,

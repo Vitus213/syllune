@@ -1,79 +1,131 @@
 ## Context
 
-当前 `RawCaptureSession` 已以 32 ms PCM16 块读取 PipeWire 音频，但 `SenseVoiceVadStreamer` 为每个局部阈值创建新的离线 SenseVoice 流并重解码不断增长的 VAD 段。`VoiceInputPipeline` 已在常驻进程中复用 SenseVoice 和可选 Qwen 提供方，但每个会话仍只拥有模拟流式 VAD 状态。现有事件协议已有 `partial_text`、追加式 `confirmed_segments`、最终文本和一次注入边界。
+当前工作区以 Python 3.12 实现 CLI、GTK 桌面应用、PipeWire 采集、Sherpa-ONNX 本地识别、云端批量识别、模型管理、模式、历史和快捷键。实时本地路径重复解码增长中的 VAD 段；`cloud-vad` 则在本地 VAD 端点后才提交片段。两者都没有在说话期间维持云端实时会话，因此停止后仍有整段或整片处理时间。
 
-用户已批准两个行为 capability：全量 Syllune 身份切换与 CLI 原生在线局部识别。目标为普通话加英文术语、本机运行、CPU 基线与可选 CUDA 加速；默认最终准确性继续以 SenseVoice 为基线。
+已批准的概念方案位于 `docs/low-latency-rust-plan.md`。仓库实测批量 `qwen3-asr-flash-2026-02-10` 内容 CER 为 0.0110、平均请求时延 0.64 秒；开源 Rust 实现证明 DashScope OpenAI-Realtime 风格 WebSocket 可通过 `qwen3-asr-flash-realtime` 在采集期间接收局部文本。目标环境是 NixOS/Wayland，当前系统已提供 `pw-record`、`wtype`、Sherpa-ONNX 和可选 CUDA。
 
 ## Goals / Non-Goals
 
 **Goals:**
 
-- 满足 `syllune-identity-migration` 的全量、无旧入口身份切换。
-- 满足 `native-cli-streaming-recognition` 的原生在线局部事件、SenseVoice 默认最终文本和一次注入。
-- 保持现有 JSON 字段和事件顺序，支持 CPU 与可选 CUDA。
-- 以可选真实模型基准验证已批准的 p95 和准确率目标。
+- 用原生 Rust `syllune` 完成 CLI-first clean cutover，最终运行时不依赖 Python。
+- 默认云端真流式边录边传，停止时只冲刷尾包和同一会话的最终结果。
+- 提供明确选择的本地原生流式后端，不做运行时隐式回退。
+- 保留严格配置、模型完整性、模式、历史、headless 快捷键和一次最终注入语义。
+- 用真实服务和实际 Wayland 注入验证首字、停止到最终、停止到注入和 CER 门禁。
 
 **Non-Goals:**
 
-- 云端识别、远端 API、自动导入旧 XDG 数据或旧命令兼容别名。
-- 在本轮新增 GUI 流式展示、时间戳、置信度或多说话人协议。
-- 将 Fun-ASR/vLLM 服务作为默认运行时，或用 Qwen 取代默认最终路径。
+- 重写 GTK/Adwaita GUI；本 change 删除 GUI 入口。
+- 同时运行本地和云端识别、用本地局部文本覆盖云端局部文本，或在停止后做第二次整段校准。
+- 自动迁移旧 XDG 数据、保留旧命令/后端别名，或自动选择不同云端模型。
+- 新增说话人分离、TTS、插件系统或通用音频设备管理 UI。
+
+## Architecture
+
+```mermaid
+flowchart LR
+    HK["CLI signal / Portal shortcut"] --> S["Session coordinator"]
+    CAP["pw-record --raw -<br/>16k mono s16"] --> Q["bounded audio queue<br/>16 x 32ms"]
+    Q --> S
+    S --> C["CloudRealtimeSession<br/>DashScope WebSocket"]
+    S --> L["LocalStreamingSession<br/>Sherpa OnlineRecognizer"]
+    C --> T["Transcript accumulator"]
+    L --> T
+    T --> E["RecognitionEvent JSON / terminal partial"]
+    T --> P["Mode processing"]
+    P --> I["wtype / clipboard fallback"]
+```
+
+一个会话只实例化一个后端。协调器拥有捕获进程、音频队列、后端会话、转写累加器、取消令牌和一次注入门闩；这些对象在会话结束后全部释放。daemon 可以复用不可变配置、HTTP/WebSocket TLS 客户端和本地 recognizer，但不得复用会话流、转写或终止状态。
 
 ## Decisions
 
-### 1. 采用全量 Syllune clean cutover
+### 1. 单个 Tokio 运行时与原生 Rust 包边界
 
-源包、导入、脚本入口、`pname`、flake 属性、overlay、Home Manager 选项、systemd 服务、XDG 子目录、桌面 ID、D-Bus 名称、资源安装路径、文档和测试全部改为 Syllune/syllune。旧名称不保留 re-export、命令别名、XDG 回退或自动迁移。旧目录只由用户自行备份或迁移，因此回滚到旧发布物不会损坏其原有状态。
+根目录改为 Cargo package/workspace，`syllune` 二进制使用 `tokio`、`clap`、`serde`/`toml`、`tokio-tungstenite`（rustls）、`reqwest`（rustls）、`zbus`、`wl-clipboard-rs` 和 `thiserror`。生产后端使用枚举分派而非动态插件接口；测试通过构造函数注入 capture、transport、clock 和 injector，避免为未批准的插件能力建立 ABI。
 
-选择理由：用户明确要求破坏性全量迁移；双入口会制造第二个公共契约和持续维护成本。拒绝只改 CLI 的过渡方案，因为它会留下品牌、路径和系统集成分裂。
+Nix 使用 `rustPlatform.buildRustPackage` 和提交的 `Cargo.lock`。`sherpa-onnx = { version = "1.13.3", default-features = false, features = ["shared"] }`，跟随锁定 nixpkgs 的 Sherpa-ONNX 版本；flake 设置 `SHERPA_ONNX_LIB_DIR` 指向 nixpkgs 构建的共享库，禁止 crate build script 联网下载预编译归档。x86_64-linux 可选 CUDA 继续由 nixpkgs 的 Sherpa-ONNX/ONNX Runtime override 提供；aarch64-linux 保持 CPU。
 
-### 2. 使用 Sherpa 原生 OnlineRecognizer 作为局部路径
+选择理由：一个 async 运行时足以覆盖子进程管道、WebSocket、HTTP、D-Bus 和信号；rustls 避免 OpenSSL 打包分叉；系统共享 Sherpa 库保持 Nix 供应链与现有 CUDA 构建一致。
 
-新增在线 Paraformer 中英 int8 模型的受控目录条目，并在常驻在线提供方中使用 Sherpa `OnlineRecognizer` 与每会话独立的 `OnlineStream`。采集块写入在线流，只有识别器就绪时才解码；变化的结果投影为 `partial_text`，识别器端点将稳定文本追加到 `confirmed_segments` 后重置在线流。
+### 2. P1 复用 `pw-record --raw -`，不先引入直接 PipeWire 绑定
 
-选择理由：当前打包运行时已包含 `OnlineRecognizer` 和 `OnlineStream`，官方模型支持普通话和英文，且该路径保留现有 Sherpa、模型校验和 CPU/CUDA 提供方边界。拒绝继续调低 SenseVoice 重解码间隔，因为它不会创建真正的增量状态。拒绝默认 Fun-ASR/vLLM 服务，因为官方实时路径依赖 CUDA/vLLM，无法单独满足 CPU 基线。
+已在目标系统确认 `pw-record [options] [<file>|-]` 支持 `--raw` 和 stdout。P1 以 `pw-record --rate 16000 --channels 1 --format s16 --raw --latency 32ms -` 启动捕获，Rust 从 stdout 聚合成固定 1024 字节（32ms）块。正常停止向捕获进程发送 SIGINT，然后读到 EOF 并交付剩余偶数字节尾帧；强制取消终止进程并丢弃未确认结果。子进程设置 kill-on-drop，任何错误路径都等待或终止子进程，不能留下孤儿。
 
-在线模型的 URL、精确大小、SRI SHA-256、允许成员、必需成员和许可证状态必须先从上游发布物获得并纳入 `ModelSpec`；缺少任一供应链字段时不实现或安装该模型。
+只有真实基准证明 `pw-record` 本身使门禁失败时，才在同一 `AudioSource` 边界换成 `pipewire` crate；这不是当前默认实现，也不同时维护两套生产捕获路径。
 
-### 3. 双路径会话：在线局部、SenseVoice 默认最终
+选择理由：当前应用已验证 `pw-record` 在 NixOS/Wayland 可用；直接 PipeWire API 会同时引入线程循环、格式协商和设备生命周期风险，但不会消除云端 flush 的主要时延。
 
-新的流式会话组件同时保存在线 Paraformer 状态和每会话的 VAD/SenseVoice 最终状态。局部事件只来自在线结果；普通停止时，VAD/SenseVoice 完整消费会话音频并生成默认最终权威文本。现有显式 Qwen 校准保持在最终文本之后，失败继续遵循当前 `hybrid-fallback` 警告行为。
+### 3. 连接先于采集，音频队列固定为 16 个块
 
-选择理由：局部反馈不再重复离线解码，最终文本保留已验证的 SenseVoice 质量基线。代价是会话期间维护两套模型状态和更高内存占用；必须通过真实硬件基准验证。
+云端会话先完成 TLS/WebSocket、鉴权和 `session.update`，收到 ready 后才启动捕获并发布 `ready`。采集任务将每个 32ms 块移动进容量 16 的 MPSC 队列（最多 512ms 音频）；发送任务严格按 FIFO 编码并发送。队列满或单次发送超过 500ms 时，会话进入失败态并停止采集；不得丢弃旧块、覆盖新块或无界缓存。
 
-### 4. 完整低延迟采集与可信运行时复用
+正常停止顺序固定为：停止接受新块 → SIGINT 捕获进程 → drain stdout 尾帧 → drain 有界队列 → 发送一次 `session.finish` → 等待最终事件。功能超时为 2 秒；超过用户 1 秒 SLO 但在 2 秒内成功的会话仍可返回文本，基准必须记录为 SLO 失败。2 秒后按错误路径结束且不注入局部结果。
 
-实时采集继续以 16 kHz、单声道 PCM16 和默认 32 ms 块运行，并由配置同时驱动 PipeWire 参数、WAV header 与 chunk 大小。每个非空且 PCM16 对齐的 EOF 尾帧必须在 flush 前同时送入在线局部与最终识别路径；奇数字节尾帧是可诊断错误，不能静默丢失或注入部分文本。
+选择理由：512ms 足以吸收短暂网络抖动，同时把不可恢复的拥塞显式暴露；连接先于采集避免丢失句首。
 
-`ModelManager.resolve()` 只能复用与当前安全 `current` 指针和有效载荷相同的成功校验结果；显式 `check()` 始终完整扫描并哈希，检查失败、指针变化、安装、更新或移除必须使缓存失效。常驻桌面进程懒加载并复用 SenseVoice、可选 Qwen 和在线 recognizer；每个会话仍独立拥有 OnlineStream、VAD、去重、确认段和终止状态。拒绝 eager warm-up，以保持启动非阻塞。
+### 4. 默认使用 DashScope OpenAI-Realtime 风格协议
 
-选择理由：32 ms 输入与尾帧交付缩短可见与最终边界的等待，缓存和 provider 复用避免在连续会话中重复完整性扫描或模型装载，同时不把完整性检查降级为缓存命中。旧 SenseVoice 模拟 partial cadence 不再保留，因为局部文本只能来自 OnlineRecognizer。
+默认 endpoint 为 `wss://dashscope.aliyuncs.com/api-ws/v1/realtime`，模型为 `qwen3-asr-flash-realtime`。请求使用 `Authorization: Bearer ...` 与 `OpenAI-Beta: realtime=v1`。`session.update` 固定文本模态、PCM/16000 和 server VAD；音频块作为 `input_audio_buffer.append` 事件发送；正常停止使用 `session.finish`。
 
-### 5. 严格模型和错误边界
+接收器消费 `session.created/updated`、speech start/stop、`conversation.item.input_audio_transcription.text`、`.completed`、`session.finished` 和 `error`。局部预览按协议的 `text + stash` 组合；完成段追加到 confirmed，后续局部不得修改已确认前缀。最终权威文本优先使用 `session.finished` 的非空文本，否则使用完整 confirmed 累加值；空结果按“无语音”完成，不注入。
 
-配置默认流式后端切换为在线模型。`doctor` 和模型管理器必须检查在线模型；流式会话若在线模型缺失、损坏或配置 provider 不可用，只发布现有错误/完成协议，不使用旧的模拟流式路径。`asr.final_backend` 只接受 `sensevoice` 或显式 `qwen3-sherpa`；旧 `none`、空值或未知值必须在配置加载时被拒绝，不提供兼容别名或自动重写。
+不自动切换 `paraformer-realtime-v2` 或其他模型。用户可显式配置另一条已实现协议/模型，但每个会话只选一个；协议不支持或模型无权限时直接失败。这避免跨模型文本漂移和隐式隐私变化。
 
-### 6. 可选硬件基准而不改变事件 JSON
+### 5. 本地后端使用 Sherpa-ONNX OnlineRecognizer
 
-基准由独立的 opt-in 测试/脚本收集事件时间，不向稳定 JSON 事件添加字段。它使用版本化的普通话/英文术语语料清单和参考转写，在目标硬件上记录音频起点到首个非空局部事件、停止到最终事件、p50/p95、模型、提供方与准确率。CI 没有真实硬件或模型时显式 skip；确定性 fake 测试继续保护协议。独立 real-ASR smoke 只证明已安装模型可推理，不能替代性能或准确率基准。
+`local-streaming` 使用受模型管理器校验的在线 Paraformer 中英 int8 或后续明确配置的在线模型。每个会话创建独立 OnlineStream，按顺序 `accept_waveform`，在 recognizer ready 时 decode；端点结果追加 confirmed 并重置流，停止时调用 input-finished、解码剩余帧并取得最终文本。daemon 只复用 OnlineRecognizer 和已验证模型路径。
+
+模型目录条目必须在实现前固定 HTTPS URL、完整字节数、SRI SHA-256、允许成员、必需成员和许可证状态。缺任一供应链字段时 `local-streaming` 切片保持未完成，但不阻塞云端 tracer bullet。
+
+选择理由：Sherpa 官方 Rust wrapper 已提供 OnlineRecognizer/OnlineStream，且能通过共享库链接现有 nixpkgs 构建；Whisper 非原生流式，需要重复重解码，不进入本轮。
+
+### 6. 保留事件形状，收敛权威文本边界
+
+JSON 行保持顶层 `type`、`sequence`、`transcript`、`message`、`injection`；`transcript` 保持 `confirmed_segments`、`partial_text`、`authoritative_text`、`is_final`、`backend`。普通终端的局部文本写 stderr，最终文本写 stdout。成功顺序为 `ready` → 零个或多个非最终 transcript → 一个最终 transcript → `finalized` → `completed`；错误为 `error` → `completed`；取消为 `cancelled` → `completed`。
+
+后端局部文本永不注入。最终结果先进入模式处理；`quick` 原样直通，其他模式失败时 warning 并保留识别文本。处理后的最终文本最多调用一次 injector。历史仅在获得权威最终文本后记录；错误、取消和只有局部文本的断线不写成功历史。
+
+### 7. 严格配置与密钥边界
+
+配置继续为严格 TOML，但根目录切换到 Syllune XDG。`streaming_backend` 只接受 `cloud-realtime`/`local-streaming`；删除 `final_backend`、`cloud-vad` 和 `sensevoice-vad`。`[cloud]` 保留 batch 字段并新增 realtime endpoint/model、server VAD threshold/silence、连接/finish timeout；endpoint 必须为 `wss://`。云端密钥按用户既有决定保存在配置文件，但使用前要求文件权限不宽于 0600。
+
+错误和日志实现 `Debug`/`Display` 时只保留密钥是否配置，不保留值；WebSocket request、Authorization header、完整音频和 transcript 默认不进日志。云端模式文档明确音频在会话期间持续发送；本地模式不得创建 HTTP/WebSocket client 请求。
+
+### 8. Headless 快捷键与停止语义统一
+
+`syllune daemon` 用 `zbus` 连接 XDG Desktop Portal GlobalShortcuts，或由用户的 Sway/合成器绑定调用公开 D-Bus 控制入口。所有入口只向同一协调器发送 Start/Stop/Cancel 命令：空闲时激活为 Start，活动时激活为正常 Stop；并发 Start 被拒绝。第一次 SIGINT 等价 Stop，第二次 SIGINT 或 SIGTERM 等价 Cancel。
+
+选择理由：只有一个状态机才能保证停止只发送一次 finish、最终文本只注入一次；快捷键层不拥有音频或识别资源。
+
+### 9. 真实门禁与确定性测试分离
+
+协议测试使用进程内 WebSocket server、伪 `pw-record`、伪 injector 和可控 clock，覆盖部分文本、confirmed、尾帧顺序、背压、断线、鉴权、空文本、信号和一次注入。它们证明行为，不证明外部时延。
+
+真实基准重放版本化 dev/test PCM，在真实 DashScope 区域中记录 capture/start/first-partial/stop/tail-sent/finish-sent/final-received/injection-complete。Wayland 注入门禁至少运行 100 次并计算 p50/p95/p99；CER 使用保留测试集且云端默认阈值为 0.02。本地后端单独报告。CI 缺凭据或 Wayland 时明确 skip，不能生成通过标记。
 
 ## Risks / Trade-offs
 
-- 在线 Paraformer 与 SenseVoice 的文本可能暂时不一致 → 局部文本明确可修订，最终文本唯一且只注入一次。
-- 两套模型增加 CPU/内存压力 → int8 模型、单例识别器和目标硬件 p95 门禁；CUDA 只作加速，不替代 CPU 验收。
-- 上游在线模型供应链信息不完整 → 未取得精确 SRI、大小、成员和许可证状态时停止模型目录变更。
-- 全量更名使用户失去旧配置和模型发现 → 不自动删除旧目录，文档提供人工备份/迁移说明，发布说明突出 breaking change。
-- Syllune 仅完成技术命名筛查 → 发布前必须完成商标和域名法律/运营检查；这不阻塞本地实现，但阻塞公开发布。
+- realtime 模型可能未对当前账号开通 → **全量 clean cutover 前硬门禁**：P1 必须完成当前账号的鉴权、最小音频、局部文本和 `session.finish` smoke；失败是阻塞证据，不回退并冒充默认路径。
+- 云端 1 秒门禁受区域和网络影响 → **全量 clean cutover 前硬门禁**：至少 100 次真实云端 + Wayland 注入试验必须报告区域、RTT、模型和 p50/p95/p99；功能超时与 SLO 分离，超标不能标记通过。
+- realtime endpoint 的质量不能由 batch CER 推断 → **独立质量硬门禁**：保留 test CER ≤0.02；不达标时暂停全量切换并重新评估明确的 realtime 后端。
+- `pw-record` 子进程增加一次管道边界 → 真实基准裁决；只有证据显示它是瓶颈才换直接 PipeWire。
+- Rust wrapper build script 默认下载二进制 → 强制 shared feature、Rust wrapper 1.13.3 与 `SHERPA_ONNX_LIB_DIR`，Nix sandbox 中禁止网络。
+- clean cutover 删除 GUI 和旧状态发现 → 旧目录不删除，旧发布物可回装；迁移说明必须在切换前完成。
+- `cloud-asr` 已归档为 `2026-08-13-cloud-asr` 并建立 `openspec/specs/asr/spec.md`；本 change 的 `asr` delta 已相对该基线重新校验。
 
 ## Migration / Rollback
 
-1. 在变更中先完成 Syllune 包、CLI 和系统集成的完整切换，再添加在线模型与原生流式路径。
-2. 首次 Syllune 启动创建新的 XDG 根；它不读取或修改旧 Type4Me 根。用户按文档手动备份、复制或重新安装模型。
-3. 发布前在目标 CPU 与 CUDA 机器运行模型完整性、事件协议和 opt-in 性能/准确率基准。
-4. 回滚时安装前一版 Type4Me 发布物并继续使用尚未删除的旧目录；Syllune 新目录不被旧版读取。由于无兼容别名，回滚不会混合状态。
+1. 在不改变安装默认入口的情况下先建立 Rust tracer bullet 与确定性测试。
+2. 云端真流式、错误/取消和真实基准达到门禁后，加入本地后端与核心数据工作流。
+3. 最后一次切换 flake、Home Manager、桌面/D-Bus 标识到 `syllune`，删除 Python/GTK 产物、旧命令和旧后端配置；旧 XDG 目录不修改。
+4. 回滚通过安装旧 Type4Me 发布物并继续读取旧目录；Rust Syllune 的新目录不被旧版读取。由于无自动迁移，两边状态不会混写。
 
-## Open Questions
+## Open Questions / Gates
 
-- 负责人：维护者。实现在线模型目录前，取得并复核官方中英 Paraformer 发布物的精确供应链元数据；未完成时不得添加下载条目。
-- 负责人：维护者。公开发布前完成 Syllune 商标和域名检查；未完成时可做本地开发验证，但不得宣称品牌法律可用。
-- 负责人：维护者。建立版本化普通话/英文术语基准语料的授权和存储方式；未完成时不得宣称 p95 或准确率门禁已通过。
+- 负责人：实现者。P1 开始前，用当前账号确认 `qwen3-asr-flash-realtime` endpoint、鉴权和 `session.finish` 最终事件；失败阻塞默认后端实现，不改成批量伪流式。
+- 负责人：实现者。全量 clean cutover 前，完成至少 100 次真实云端 + Wayland 注入试验与 realtime test CER ≤0.02 门禁；任一失败都阻止删除 Python/GUI/旧入口，并回到 design 评估明确替代后端。
+- 负责人：实现者。P2 添加本地模型目录前固定并复核 URL、字节数、SRI、成员与许可证；字段不全时不得安装模型。
+- 负责人：维护者。公开发布前完成 Syllune 商标/域名检查；不阻塞本地开发，但阻塞公开品牌声明。
+- 负责人：维护者。Rust change 完成后重新严格校验 `asr` 基线和本 change，再执行本 change 的独立 archive dry-run；不得把代码完成当作 archive 确认。

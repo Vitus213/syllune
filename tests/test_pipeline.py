@@ -807,3 +807,115 @@ def test_live_provider_refreshes_changed_model_and_rejects_removed_model(
     with pytest.raises(RuntimeError, match="模型已删除"):
         pipeline.create_session(RecognitionRequest(inject=False))
     assert len(providers) == 2
+
+
+def test_cloud_vad_wiring_builds_cloud_streamer_without_sensevoice(
+    tmp_path: Path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    seen: dict[str, object] = {}
+    fake_provider = object()
+    monkeypatch.setattr(pipeline_module, "CloudASRProvider", lambda *_a, **_k: fake_provider)
+    monkeypatch.setattr(
+        pipeline_module,
+        "CloudVadStreamer",
+        lambda config, provider, **_kwargs: (
+            seen.update(  # type: ignore[no-untyped-def]
+                config=config, provider=provider
+            )
+            or _Streamer()
+        ),
+    )
+    pipeline = VoiceInputPipeline(
+        Config(asr=ASRConfig(batch_backend="cloud", streaming_backend="cloud-vad")),
+        paths=_paths(tmp_path),
+        history=_History(),
+        model_manager=_Models(),  # type: ignore[arg-type]
+    )
+    pipeline.create_session(RecognitionRequest(inject=False))
+
+    assert seen["provider"] is fake_provider
+    assert getattr(seen["config"], "streaming_backend") == "cloud-vad"
+
+
+def test_final_backend_cloud_builds_cloud_calibrator(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    created: list[object] = []
+    monkeypatch.setattr(
+        pipeline_module, "CloudASRProvider", lambda cloud: created.append(cloud) or object()
+    )
+    pipeline = VoiceInputPipeline(
+        Config(asr=ASRConfig(batch_backend="fake", final_backend="cloud")),
+        paths=_paths(tmp_path),
+        history=_History(),
+        model_manager=_Models(),  # type: ignore[arg-type]
+        streamer_factory=lambda *_a, **_k: _Streamer(),
+    )
+    pipeline.create_session(RecognitionRequest(inject=False))
+
+    assert created and getattr(created[0], "model") == "qwen3-asr-flash-2026-02-10"
+
+
+def test_cloud_vad_session_emits_final_warning_and_history(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    class FailingCloudStreamer:
+        failed_segment_count = 2
+
+        def accept_chunk(self, _chunk: bytes) -> tuple[RecognitionTranscript, ...]:
+            return ()
+
+        def flush(self) -> RecognitionTranscript:
+            return RecognitionTranscript(("云端文本",), "", "云端文本", True, "cloud-vad")
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "CloudVadStreamer",
+        lambda *_a, **_k: FailingCloudStreamer(),
+    )
+    history = _History()
+    events: list[object] = []
+    pipeline = VoiceInputPipeline(
+        Config(asr=ASRConfig(batch_backend="cloud", streaming_backend="cloud-vad")),
+        paths=_paths(tmp_path),
+        history=history,
+        model_manager=_Models(),  # type: ignore[arg-type]
+        clipboard=_Clipboard(),
+        capture_factory=lambda: _Capture(tmp_path / "unused.wav"),
+    )
+    pipeline.create_session(
+        RecognitionRequest(inject=False, event_sink=events.append)  # type: ignore[arg-type]
+    ).run()
+
+    event_types = [getattr(event, "type") for event in events]
+    assert event_types == ["ready", "warning", "transcript", "finalized", "completed"]
+    warning = next(event for event in events if getattr(event, "type") == "warning")
+    assert "2 个语音段" in getattr(warning, "message")
+    final = next(event for event in events if getattr(event, "type") == "finalized")
+    assert getattr(final, "transcript").backend == "cloud-vad"
+    assert history.records
+    record = history.records[0]
+    assert getattr(record, "asr_provider") == "cloud-vad"
+    assert getattr(record, "asr_model") == "qwen3-asr-flash-2026-02-10"
+
+
+def test_cloud_final_calibration_marks_cloud_backend(
+    tmp_path: Path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    class CloudCalibrator:
+        def transcribe(self, wav_path: Path) -> RecognitionResult:
+            return RecognitionResult("云端校准文本", "cloud")
+
+    monkeypatch.setattr(pipeline_module, "CloudASRProvider", lambda *_a, **_k: CloudCalibrator())
+    events: list[object] = []
+    pipeline = VoiceInputPipeline(
+        Config(asr=ASRConfig(batch_backend="fake", final_backend="cloud")),
+        paths=_paths(tmp_path),
+        history=_History(),
+        model_manager=_Models(),  # type: ignore[arg-type]
+        streamer_factory=lambda *_a, **_k: _Streamer(),
+        capture_factory=lambda: _Capture(tmp_path / "unused.wav"),
+    )
+    pipeline.create_session(
+        RecognitionRequest(inject=False, event_sink=events.append)  # type: ignore[arg-type]
+    ).run()
+
+    finalized = next(event for event in events if getattr(event, "type") == "finalized")
+    assert getattr(finalized, "transcript").backend == "cloud"
+    assert getattr(finalized, "transcript").authoritative_text == "云端校准文本"

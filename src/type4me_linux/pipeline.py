@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .capture import RawCaptureSession, Recorder
 from .clipboard import ClipboardSnapshotService
+from .cloud_asr import CloudASRProvider, CloudVadStreamer
 from .config import Config
 from .events import RecognitionEvent, RecognitionTranscript
 from .history import CompletedHistoryRecord, HistoryStore
@@ -78,6 +79,7 @@ class VoiceInputPipeline:
             config.asr,
             model_resolver=self.model_manager.resolve,
             hotwords=self.vocabulary.list_hotwords(),
+            cloud=self.config.cloud,
         )
         self.injector = injector or TextInjector(config.inject)
         self.recorder = recorder or Recorder(config.capture)
@@ -140,13 +142,21 @@ class VoiceInputPipeline:
         started_at = time.monotonic()
         processing_state: dict[str, TextProcessResult | None] = {"result": None}
         session_state: dict[str, RecognitionSession] = {}
+        warning_state: dict[str, bool] = {"cloud_segments": False}
 
-        sensevoice = self._get_live_sensevoice()
-        streamer = self._streamer_factory(
-            self.config.asr,
-            sensevoice,
-            model_resolver=self.model_manager.resolve,
-        )
+        if self.config.asr.streaming_backend == "cloud-vad":
+            streamer = CloudVadStreamer(
+                self.config.asr,
+                CloudASRProvider(self.config.cloud),
+                model_resolver=self.model_manager.resolve,
+            )
+        else:
+            sensevoice = self._get_live_sensevoice()
+            streamer = self._streamer_factory(
+                self.config.asr,
+                sensevoice,
+                model_resolver=self.model_manager.resolve,
+            )
         calibrator = self._get_live_calibrator()
 
         def process_text(raw_text: str) -> str:
@@ -158,6 +168,12 @@ class VoiceInputPipeline:
                 clipboard=snapshot.clipboard,
             )
             processing_state["result"] = result
+            failed_segments = getattr(streamer, "failed_segment_count", 0)
+            if failed_segments and not warning_state["cloud_segments"]:
+                warning_state["cloud_segments"] = True
+                session_state["session"].publish_warning(
+                    f"云端识别 {failed_segments} 个语音段失败并已跳过，最终文本仅包含成功片段。"
+                )
             if result.warning:
                 session_state["session"].publish_warning(result.warning)
             return result.text
@@ -200,6 +216,7 @@ class VoiceInputPipeline:
             "capture_factory": self._capture_factory,
             "streamer": streamer,
             "calibrator": calibrator,
+            "calibration_backend": "cloud" if self.config.asr.final_backend == "cloud" else "hybrid",
             "processor": process_text,
             "history_writer": write_history if self.history is not None else None,
             "failed_history_writer": write_failure if self.history is not None else None,
@@ -265,6 +282,10 @@ class VoiceInputPipeline:
                 model_dir=model_dir,
                 hotwords=hotwords,
             )
+        elif self.config.asr.final_backend == "cloud":
+            if self._live_calibrator_ready:
+                return self._live_calibrator
+            calibrator = CloudASRProvider(self.config.cloud)
         else:
             raise ValueError(f"不支持的最终识别后端：{self.config.asr.final_backend}")
 
@@ -310,6 +331,8 @@ class VoiceInputPipeline:
             return self.config.asr.qwen3_model_id
         if backend in {"sensevoice", "sensevoice-vad", "hybrid-fallback"}:
             return self.config.asr.sensevoice_model_id
+        if backend in {"cloud", "cloud-vad"}:
+            return self.config.cloud.model
         return None
 
     def _active_model_ids(self) -> tuple[str, ...]:

@@ -1,0 +1,8 @@
+{"id": "real-01", "reference": "你好。", "voice": "user"}
+{"id": "real-02", "reference": "今天天气不错，我们一起去楼下公园散步吧。", "voice": "user"}
+{"id": "real-03", "reference": "这个月的销售额是三百五十八万元，同比增长了百分之二十。", "voice": "user"}
+{"id": "real-04", "reference": "请把那个API的密钥配置到环境变量里，然后重启服务。我想在NixOS上部署type4me，用sherpa来做本地语音识别。", "voice": "user"}
+{"id": "real-05", "reference": "他因为工作原因心情非常忧郁，我们决定一起去公园散心。明天夜间到后天白天，全省大部分地区有中到大雨，局部地区伴有短时强降水。你觉得这个方案可行吗？如果不行的话，我们还有什么备选方案？这台服务器配置了十六核CPU。", "voice": "user"}
+{"id": "real-06", "reference": "一百二十八G内存和两块四T的固态硬盘。系统提示：磁盘空间不足，请清理缓存之后重试。年度总结。", "voice": "user"}
+{"id": "real-07", "reference": "总营收突破一亿元。", "voice": "user"}
+{"id": "real-08", "reference": "新增用户八十五万，续费率百分之九十三。", "voice": "user"}

@@ -1,6 +1,6 @@
 # Cloud ASR：接入百炼云端语音识别
 
-## 问题
+## Why
 
 本地 ASR（SenseVoice / Qwen3-ASR-0.6B）在嘈杂或口音场景下准确率受限，
 英文/数字混排与标点结构依赖离线模型能力。用户希望在 CLI 中接入云端语音识别，
@@ -23,9 +23,9 @@
   本地 `sensevoice` 0.1008。Omni 系需要固定“只转写”系统提示，否则问句会触发
   聊天回复。
 
-## 变更内容
+## What Changes
 
-1. 新增 `[cloud]` 配置节：`base_url`、`api_key_env`、`model`、`timeout_seconds`。
+1. 新增 `[cloud]` 配置节：`base_url`、`api_key`（明文密钥，同 omp models.yml 的 apiKey 字段）、`model`、`timeout_seconds`。
 2. `asr.batch_backend` 增加 `cloud`；`asr.streaming_backend` 增加 `cloud-vad`；
    `asr.final_backend` 增加 `cloud`。
 3. 新增 `CloudASRClient`（stdlib urllib，重试/退避/超时）与
@@ -52,7 +52,7 @@
 
 ## 决策记录（ADR）
 
-- **D1** 密钥走环境变量（`api_key_env`），不落盘进 TOML —— 与 `[processing]` 一致。
+- **D1**（已按用户决定反转）密钥明文写入 `[cloud].api_key`，同 omp models.yml 的 apiKey 字段；不再从环境变量读取。配置文件需 0600 权限。
 - **D2 默认模型 `qwen3-asr-flash-2026-02-10`**：专用 ASR、无聊天漂移、
   时延最低；omni 系在文档中列为更高准确率选项（需系统提示）。
 - **D3 流式 = 本地 VAD + 云端逐段转写**：真流式 WebSocket 对该 key 不可达，

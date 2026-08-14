@@ -2,57 +2,75 @@
 
 ## ADDED Requirements
 
-### Requirement: 原生在线 CLI 局部文本
+### Requirement: 默认云端真流式识别
 
-在配置的在线模型、SenseVoice 和 VAD 均通过完整性校验后，`syllune stream --json` SHALL 以原生在线识别状态生成局部文本。局部文本 MUST 在语音仍在输入时更新，MUST 使用既有 `RecognitionEvent` 和 `RecognitionTranscript` 字段，且相同文本不得重复发布。在线端点已经确认的文本 MUST 仅以追加方式出现在 `confirmed_segments`。
+`syllune stream` SHALL 默认使用 `cloud-realtime` 后端，在会话仍处于采集状态时持续把 16 kHz、单声道 PCM16 音频发送到同一云端实时会话并消费局部和确认结果。CLI MUST 在停止输入前发布变化的非最终 `transcript` 事件；相同文本 MUST 不重复发布，云端已确认片段 MUST 仅追加到 `confirmed_segments`。
 
-#### Scenario: 语音输入期间发布变化的局部文本
+#### Scenario: 停止前已经发送音频并发布局部文本
 
-- **WHEN** 用户在普通话夹英文术语的语音会话中持续输入，且在线识别器产生新的非最终文本
-- **THEN** CLI MUST 在会话结束前输出一个或多个非最终 `transcript` JSON 事件，并在文本未变化时不额外输出重复事件
+- **WHEN** 用户持续说话且云端实时会话返回变化的局部文本
+- **THEN** 在任何停止请求之前，客户端 MUST 已发送对应音频块并输出一个或多个 `is_final: false` 的 `transcript` 事件
 
-#### Scenario: 在线段落结束后确认文本
+#### Scenario: 云端确认一个语音段
 
-- **WHEN** 在线识别器报告一个语音端点且该段包含文本
-- **THEN** CLI MUST 将该文本追加到 `confirmed_segments`，并继续允许后续语音产生新的局部文本
+- **WHEN** 云端实时会话报告一个包含文本的完成段
+- **THEN** CLI MUST 将该文本追加到 `confirmed_segments`，清除该段的可修订局部文本并继续接收后续语音
 
-### Requirement: 默认准确最终文本与一次注入
+### Requirement: 停止冲刷与唯一最终结果
 
-普通停止时，Syllune SHALL 使用同一会话音频的 SenseVoice 最终文本作为默认权威文本；`asr.final_backend = "qwen3-sherpa"` SHALL 保持为显式最终校准选项。无论局部文本更新次数，CLI MUST 输出恰好一个最终 `transcript`、随后输出 `finalized` 和 `completed`，并且启用注入时最多注入一次最终权威文本。
+第一次 `SIGINT`、第二次快捷键激活或正常采集 EOF SHALL 停止接受新音频、恰好一次交付有效尾帧并向当前实时后端发送完成信号。Syllune MUST 使用该实时会话返回的最终文本作为唯一权威文本，不得在停止后对整段会话发起 SenseVoice、Qwen 或云端批量校准。成功会话 MUST 输出恰好一个最终 `transcript`，随后依次输出 `finalized` 和 `completed`；启用注入时最终文本 MUST 最多注入一次。
 
-#### Scenario: 默认策略在停止后完成
+#### Scenario: 快捷键停止冲刷当前云端会话
 
-- **WHEN** 用户以第一次 `SIGINT` 正常停止默认 `syllune stream --json` 会话
-- **THEN** 输出 MUST 包含恰好一个 `is_final: true` 且 `backend: "sensevoice-vad"` 的最终转写，随后依次出现 `finalized` 和 `completed`
+- **WHEN** 用户停止默认云端实时会话且服务端返回最终文本
+- **THEN** Syllune MUST 先交付采集尾帧、发送一次完成信号，再输出该文本的唯一最终事件并完成一次注入，且 MUST 不发起停止后的批量转写请求
 
-#### Scenario: 显式 Qwen 校准成功
+#### Scenario: 正常停止时没有语音文本
 
-- **WHEN** 用户配置 `asr.final_backend = "qwen3-sherpa"` 并正常停止会话
-- **THEN** 成功的最终转写 MUST 使用 `backend: "hybrid"`，且局部事件和最终注入次数保持不变
+- **WHEN** 用户停止会话但实时后端没有返回非空文本
+- **THEN** Syllune MUST 完成会话而不注入空文本，并 MUST 给出可诊断结果
 
-#### Scenario: 旧或未知最终后端被拒绝
+#### Scenario: 强制取消
 
-- **WHEN** 用户配置 `asr.final_backend` 为 `none`、空值或其他未知值
-- **THEN** 配置加载 MUST 以可诊断错误失败，且不得将该值解释为 SenseVoice 或 Qwen 策略
+- **WHEN** 正常停止尚未完成时收到第二次 `SIGINT`，或会话收到 `SIGTERM`
+- **THEN** Syllune MUST 取消采集和后端会话、发布 `cancelled` 后再发布 `completed`，不得处理、记录或注入部分文本，并以取消状态退出
 
-#### Scenario: 在线模型不可用
+### Requirement: 显式本地流式后端
 
-- **WHEN** 用户启动需要在线模型但该模型未安装、未通过完整性校验或配置 provider 不可用的流式会话
-- **THEN** CLI MUST 发布一个可诊断的 `error`，随后发布 `completed`，且不得注入文本或隐式退回到旧的重复离线局部解码路径
+`syllune stream --backend local-streaming` SHALL 使用本地原生在线识别状态产生局部、确认和最终文本，并 MUST 不建立云端 ASR 连接。所需本地模型未安装、损坏或 provider 不可用时，会话 MUST 报告错误并结束，不得静默切换到云端。
 
-### Requirement: 目标硬件上的性能和准确率验证
+#### Scenario: 断网使用本地后端
 
-仓库 SHALL 提供可选的、可重复执行的本地基准流程，在普通话夹英文术语的带标注语料上记录首个非空局部文本和最终文本的延迟，并与变更前 SenseVoice 最终文本基线比较准确率。默认在线路径的验收 MUST 要求首个局部文本 p95 不超过 800 ms、停止到最终文本 p95 不超过 1.5 s，且准确率不低于基线；不具备模型或目标硬件的 CI MUST 明确跳过该基准而不宣称通过。
+- **WHEN** 网络不可用但所需本地模型有效，用户选择 `local-streaming`
+- **THEN** CLI MUST 在语音输入期间发布局部文本并在停止后完成最终文本，且 MUST 不尝试云端连接
 
-#### Scenario: 目标硬件基准通过
+#### Scenario: 本地模型不可用
 
-- **WHEN** 维护者在具备所需模型和目标硬件的环境中执行已记录的基准流程
-- **THEN** 报告 MUST 包含每个样本的局部和最终延迟、聚合 p50/p95、运行模型和提供方，以及相对 SenseVoice 基线的准确率结果
+- **WHEN** 用户选择 `local-streaming` 但模型缺失、损坏或 provider 不可用
+- **THEN** CLI MUST 发布可诊断 `error` 后发布 `completed`，不得注入文本或切换到 `cloud-realtime`
 
-#### Scenario: 非目标硬件持续集成
+### Requirement: 后端失败不隐式切换
 
-- **WHEN** 持续集成环境没有真实模型或目标硬件
-- **THEN** 基准 MUST 被显式跳过，且确定性事件、错误和生命周期测试仍 MUST 运行
+流式后端的鉴权、网络、协议、超时、模型或推理失败 MUST 保持所选后端的错误语义。Syllune MUST 不因运行时失败把音频发送到另一个后端；若失败发生在任何最终注入之前，则 MUST 不注入部分结果。
+
+#### Scenario: 云端鉴权失败
+
+- **WHEN** `cloud-realtime` 在会话建立时收到鉴权失败
+- **THEN** CLI MUST 发布一个不包含密钥的 `error` 和一个 `completed` 事件，不得启动本地识别或注入文本
+
+#### Scenario: 云端中途断线
+
+- **WHEN** 已发布局部文本后 WebSocket 在最终结果前不可恢复地断开
+- **THEN** CLI MUST 报告会话失败、保留局部文本仅作显示并不得将其作为权威文本注入或写入成功历史
+
+### Requirement: 破坏性实时配置切换
+
+实时后端配置 SHALL 只接受 `cloud-realtime` 和 `local-streaming`。旧 `cloud-vad`、`sensevoice-vad` 以及停止后二次校准的 `asr.final_backend` 配置 MUST 被拒绝，而不是解释为新后端或自动重写。
+
+#### Scenario: 旧实时配置被拒绝
+
+- **WHEN** 用户配置 `streaming_backend = "cloud-vad"`、`"sensevoice-vad"` 或提供 `final_backend`
+- **THEN** 配置加载 MUST 失败并指出迁移到 `cloud-realtime` 或 `local-streaming`，且 MUST 不启动采集
 
 ## MODIFIED Requirements
 

@@ -36,6 +36,20 @@ _SENSEVOICE_MEMBERS = (
     "tokens.txt",
 )
 
+_STREAMING_PARAFORMER_MEMBERS = (
+    "README.md",
+    "decoder.int8.onnx",
+    "decoder.onnx",
+    "encoder.int8.onnx",
+    "encoder.onnx",
+    "test_wavs/0.wav",
+    "test_wavs/1.wav",
+    "test_wavs/2.wav",
+    "test_wavs/3.wav",
+    "test_wavs/8k.wav",
+    "tokens.txt",
+)
+
 _QWEN_MEMBERS = (
     "README.md",
     "conv_frontend.onnx",
@@ -117,6 +131,25 @@ _MODEL_SPECS = (
         license_status=(
             "上游 Qwen3-ASR 标注为 Apache-2.0；转换后归档未附许可证，重新分发许可尚未核实。"
         ),
+    ),
+    ModelSpec(
+        id="streaming-paraformer-bilingual-zh-en",
+        version="asr-models-2024-03-10",
+        url=(
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
+            "sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2"
+        ),
+        sha256_sri="sha256-VGKh/OQmk96uVyrx6MRocSSxKqhf5h/00xaLtSgOIF8=",
+        size_bytes=1_047_319_737,
+        archive_type="tar.bz2",
+        top_level_directory="sherpa-onnx-streaming-paraformer-bilingual-zh-en",
+        allowed_members=_STREAMING_PARAFORMER_MEMBERS,
+        required_paths=("encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt"),
+        license_source=(
+            "https://k2-fsa.github.io/sherpa/onnx/pretrained_models/"
+            "online-paraformer/paraformer-models.html"
+        ),
+        license_status="上游模型页面未在归档内提供独立许可证文本；使用前需用户自行核验许可。",
     ),
 )
 

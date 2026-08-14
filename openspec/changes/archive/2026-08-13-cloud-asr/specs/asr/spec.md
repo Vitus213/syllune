@@ -13,14 +13,13 @@
 #### Scenario: 配置启用后批量转写走云端
 
 Given 配置 `asr.batch_backend = "cloud"` 且 `[cloud]` 节包含
-`model = "qwen3-asr-flash-2026-02-10"`、`api_key_env = "BAILIAN_API_KEY"`，
-以及环境变量 `BAILIAN_API_KEY`；
+`model = "qwen3-asr-flash-2026-02-10"`、`api_key = "sk-test"`；
 When 调用 `transcribe <wav>`；
 Then 返回的 `RecognitionResult.text` 为云端模型转写文本，`backend == "cloud"`。
 
 #### Scenario: 缺少 API 密钥时报错而非静默回退
 
-Given `api_key_env` 指向的环境变量未设置；
+Given 配置节 `[cloud].api_key` 为空；
 When 执行云端转写；
 Then 抛出带密钥提示的异常，且不执行任何本地识别。
 
@@ -82,14 +81,14 @@ Then 该片段标为失败并发布 `warning` 事件，后续片段继续处理�
 #### Scenario: 完整配置通过校验
 
 Given TOML 包含 `[cloud]` 节：`base_url = "https://dashscope.aliyuncs.com"`、
-`api_key_env = "BAILIAN_API_KEY"`、`model = "qwen3-asr-flash-2026-02-10"`、
+`api_key = "sk-test"`、`model = "qwen3-asr-flash-2026-02-10"`、
 `timeout_seconds = 60.0`；
 When `load_config`；
 Then 返回带 `cloud` 配置的 `Config`，默认值与上述一致。
 
 #### Scenario: 未知键与非法值被拒绝
 
-Given `[cloud]` 节包含未知键，或 `api_key_env` 不是合法环境变量名 /
+Given `[cloud]` 节包含未知键，或 `api_key` 不是字符串 /
 `model` 为空 / `base_url` 为空 / `timeout_seconds` 非正数；
 When `load_config`；
 Then 抛出与现有配置一致的校验错误。
@@ -150,7 +149,7 @@ Given `[cloud]` 的 `model` 可选以下键：
 When `load_config` 校验 `cloud.model`；
 Then 仅接受上述枚举，其它值报错。
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: 现有批量后端枚举扩展
 

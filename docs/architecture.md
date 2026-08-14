@@ -1,6 +1,6 @@
 # type4me-linux 架构
 
-本文描述当前实现的运行时边界、持久化契约和集成接口。`type4me-linux` 只有一个已安装入口 `type4me_linux.cli:main`；CLI 批量识别、CLI 实时识别、常驻桌面应用、D-Bus 快捷键控制和本地 daemon 复用同一组配置、模型、词汇、处理和历史组件。
+本文描述当前实现的运行时边界、持久化契约和集成接口。仓库同时保留完整的 `type4me_linux.cli:main` Python 应用入口，以及独立的 `syllune` Rust 原生流式入口；两者不共享运行时进程，但共享 Nix 项目和模型供应链约定。
 
 ## 设计约束
 
@@ -24,6 +24,12 @@
 | 配置与部署 | `config.py`、`flake.nix`、`nix/home-manager.nix` | 严格配置、Nix 包装、桌面资源和用户服务 |
 
 `VoiceInputPipeline.run_once()` 是批量路径的所有者，供 `transcribe`、`record` 和 daemon 的 `/transcribe` 使用。`VoiceInputPipeline.create_session()` 创建实时路径，供 `stream`、GUI 和快捷键控制使用；实时路径不会绕回批量方法。
+
+## 原生 Syllune 边界
+
+`rust/` 是独立的单二进制 native tracer。`syllune stream` 在 `ready` 后启动 `pw-record --raw -`，边采集边把 16 kHz、单声道 PCM 块发送给 `cloud-realtime`，或直接送入 `local-streaming` 的 Sherpa-ONNX `OnlineRecognizer`。第一次 `Ctrl-C` 只进入停止/冲刷阶段；最终文本最多注入一次，`--no-inject` 可关闭注入。当前 native 包只承诺 `stream` 和 `doctor`；其余命令仍报告不可用，不应当被文档当作已迁移。
+
+native 包不包含模型管理器和模型权重。在线 Paraformer 仍通过 Python `ModelManager` 的固定源、SHA-256、归档白名单和原子 `current` 指针安装；Rust 只消费用户显式配置的已安装目录。这是迁移期边界，避免在 native tracer 中复制一套不一致的供应链实现。
 
 ## XDG 路径与权限
 
@@ -108,9 +114,9 @@ port = 8766
 
 枚举边界：
 
-- `asr.batch_backend`：`fake`、`sensevoice`、`qwen3-sherpa`、`hybrid`。
-- `asr.streaming_backend`：仅 `sensevoice-vad`。
-- `asr.final_backend`：`sensevoice`、`qwen3-sherpa`。旧配置的 `final_backend = "none"` 必须改为 `"sensevoice"`。
+- `asr.batch_backend`：`fake`、`sensevoice`、`qwen3-sherpa`、`hybrid`、`cloud`。
+- `asr.streaming_backend`：`sensevoice-vad`、`cloud-vad`。
+- `asr.final_backend`：`sensevoice`、`qwen3-sherpa`、`cloud`。旧配置的 `final_backend = "none"` 必须改为 `"sensevoice"`。
 - `asr.partial_interval_millis`：32 到 5000；默认 200 ms 的局部离线解码间隔。
 - `asr.language`：`auto`、`zh`、`en`、`ja`、`ko`、`yue`。
 - `asr.provider`：`cpu`、`cuda`；该值原样传给 Sherpa。不可用提供方会导致识别失败，不会静默回退。
@@ -118,8 +124,13 @@ port = 8766
 - 实时 `[capture]`：仅 `sample_rate = 16000`、`channels = 1` 和 `format = "s16"`；`chunk_millis` 默认 32。
 - `inject.prefer`：`wtype`、`clipboard`。
 - `processing.provider`：`none`、`openai-compatible`、`ollama`。
+- `[cloud]`：`base_url` 非空、`api_key` 为字符串（明文密钥，与 omp models.yml 的 apiKey 字段一致，建议配置文件权限 0600）、`model` 枚举 `qwen3-asr-flash-2026-02-10` / `qwen3-omni-flash` / `qwen3.5-omni-flash`、`timeout_seconds` 大于 0。
 
-数值、布尔值、模型 ID 和环境变量名都有类型与范围校验。三个模型只能通过 ModelManager 的 `current` 指针解析；调用方不能直接指定任意载荷路径。
+云端批量后端 `cloud` 通过百炼多模态生成接口以 base64 data URI 直传本地 WAV；
+实时 `cloud-vad` 复用本地 Silero VAD 分段、逐段云端转写，单段失败跳过并在
+结束时发布 `warning`。详细基准与候选模型优先级见仓库 README「云端语音识别」节。
+
+数值、布尔值、模型 ID 和环境变量名都有类型与范围校验。Python 默认的三个运行时模型只能通过 ModelManager 的 `current` 指针解析；native `local-streaming` 额外消费在线 Paraformer 的显式目录。调用方不能直接指定任意 Python 载荷路径。
 
 ## 模型目录与事务安装
 
@@ -130,6 +141,7 @@ port = 8766
 | `sensevoice-int8` | `2024-07-17` | `model.int8.onnx`、`tokens.txt` |
 | `silero-vad` | `asr-models` | `silero_vad.onnx` |
 | `qwen3-asr-0.6b-int8` | `2026-03-25` | `conv_frontend.onnx`、`encoder.int8.onnx`、`decoder.int8.onnx`、三个 `tokenizer/` 文件 |
+| `streaming-paraformer-bilingual-zh-en` | `asr-models-2024-03-10` | `encoder.int8.onnx`、`decoder.int8.onnx`、`tokens.txt` |
 
 固定供应链数据：
 
@@ -138,6 +150,7 @@ port = 8766
 | `sensevoice-int8` | `163002883` | <https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2> | `sha256-fR76ITimWwtIjfN/i4nj2RpgZ25Bb1FblSNY2D39NH4=` |
 | `silero-vad` | `643854` | <https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx> | `sha256-niRJ4Qh0ltjUyrqQfyPgvT942R+lUkebucI6wJy7H9Y=` |
 | `qwen3-asr-0.6b-int8` | `878702423` | <https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2> | `sha256-OT+KFOL1+5Z0aqqzQpl6QGQQAfvVv5WSoICoMpF47pY=` |
+| `streaming-paraformer-bilingual-zh-en` | `1047319737` | <https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2> | `sha256-VGKh/OQmk96uVyrx6MRocSSxKqhf5h/00xaLtSgOIF8=` |
 
 操作入口：
 

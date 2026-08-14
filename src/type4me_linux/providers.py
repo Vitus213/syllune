@@ -263,10 +263,17 @@ def create_provider(
     sensevoice_factory: RecognizerFactory | None = None,
     qwen_factory: RecognizerFactory | None = None,
     numpy_module: Any | None = None,
+    cloud: Any | None = None,
 ) -> ASRProvider:
     backend = config.batch_backend.lower()
     if backend == "fake":
         return FakeProvider()
+    if backend == "cloud":
+        if cloud is None:
+            raise ValueError("批量识别后端 cloud 需要提供 [cloud] 配置节。")
+        from .cloud_asr import CloudASRProvider
+
+        return CloudASRProvider(cloud, numpy_module=numpy_module)
 
     sensevoice = SenseVoiceProvider(
         config,

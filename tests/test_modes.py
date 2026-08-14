@@ -37,7 +37,8 @@ def test_exact_builtin_modes_are_seeded_with_stable_ids_and_prompts(tmp_path: Pa
         (
             "voice-polish",
             "语音润色",
-            "在不改变原意、不编造事实的前提下，删除口头语并修正语病。"
+            "在不改变原意、不编造事实的前提下，删除口头语并修正语病，"
+            "输出简体中文；英文与代码原样保留，数字一律使用阿拉伯数字。"
             "只输出处理后的文本，不要解释。原文：{text}",
             "润色中",
             1,

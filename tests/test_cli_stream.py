@@ -3,12 +3,26 @@ from __future__ import annotations
 import json
 import signal
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 
 from type4me_linux.cli import main
 from type4me_linux.events import RecognitionEvent, RecognitionTranscript
 from type4me_linux.inject import InjectionResult
+
+
+@pytest.fixture(autouse=True)
+def _isolated_xdg(monkeypatch, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    """与开发者机器的真实配置隔离：默认配置路径必须指向临时空目录。"""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for variable, name in (
+        ("XDG_CONFIG_HOME", "config"),
+        ("XDG_DATA_HOME", "data"),
+        ("XDG_CACHE_HOME", "cache"),
+        ("XDG_STATE_HOME", "state"),
+    ):
+        monkeypatch.setenv(variable, str(tmp_path / name))
 
 
 def _transcript(

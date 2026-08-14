@@ -7,6 +7,7 @@ import pytest
 from type4me_linux.config import (
     ASRConfig,
     CaptureConfig,
+    CloudConfig,
     Config,
     DaemonConfig,
     HistoryConfig,
@@ -59,6 +60,7 @@ def test_exact_defaults() -> None:
         ),
         history=HistoryConfig(enabled=True),
         daemon=DaemonConfig(host="127.0.0.1", port=8766),
+        cloud=CloudConfig(),
     )
     assert set(asdict(Config())) == {
         "asr",
@@ -67,6 +69,7 @@ def test_exact_defaults() -> None:
         "processing",
         "history",
         "daemon",
+        "cloud",
     }
 
 
@@ -217,3 +220,75 @@ def test_load_config_reports_toml_error_in_chinese(tmp_path) -> None:  # type: i
 
     with pytest.raises(ValueError, match="无法读取配置文件"):
         load_config(config_path)
+
+
+def test_cloud_section_defaults_are_as_documented() -> None:
+    cloud = Config().cloud
+    assert cloud.base_url == "https://dashscope.aliyuncs.com"
+    assert cloud.api_key == ""
+    assert cloud.model == "qwen3-asr-flash-2026-02-10"
+    assert cloud.timeout_seconds == 60.0
+
+
+def test_cloud_section_full_configuration() -> None:
+    config = config_from_mapping(
+        {
+            "cloud": {
+                "base_url": "https://dashscope.aliyuncs.com",
+                "api_key": "sk-test-private-key",
+                "model": "qwen3.5-omni-flash",
+                "timeout_seconds": 30,
+            }
+        }
+    )
+    assert config.cloud.base_url == "https://dashscope.aliyuncs.com"
+    assert config.cloud.api_key == "sk-test-private-key"
+    assert config.cloud.model == "qwen3.5-omni-flash"
+    assert config.cloud.timeout_seconds == 30.0
+
+
+def test_cloud_models_enum_accepted() -> None:
+    for model in ("qwen3-asr-flash-2026-02-10", "qwen3-omni-flash", "qwen3.5-omni-flash"):
+        config = config_from_mapping({"cloud": {"model": model}})
+        assert config.cloud.model == model
+
+
+@pytest.mark.parametrize(
+    ("mapping", "error_type", "message"),
+    [
+        ({"cloud": {"bogus": 1}}, ValueError, r"配置节 \[cloud\] 包含未知键"),
+        ({"cloud": []}, TypeError, r"配置节 \[cloud\] 必须是 TOML 表"),
+        ({"cloud": {"model": "whisper-1"}}, ValueError, "cloud.model 的值无效"),
+        ({"cloud": {"model": ""}}, ValueError, "cloud.model 的值无效"),
+        ({"cloud": {"api_key": 42}}, TypeError, "cloud.api_key 必须是字符串"),
+        ({"cloud": {"base_url": ""}}, ValueError, "cloud.base_url 不得为空"),
+        ({"cloud": {"base_url": 42}}, TypeError, "cloud.base_url 必须是字符串"),
+        ({"cloud": {"timeout_seconds": 0}}, ValueError, "cloud.timeout_seconds 必须大于"),
+        (
+            {"cloud": {"timeout_seconds": -1.5}},
+            ValueError,
+            "cloud.timeout_seconds 必须大于",
+        ),
+        ({"cloud": {"timeout_seconds": "60"}}, TypeError, "cloud.timeout_seconds 必须是数字"),
+    ],
+)
+def test_cloud_section_rejects_invalid_values(
+    mapping: dict[str, object], error_type: type[Exception], message: str
+) -> None:
+    with pytest.raises(error_type, match=message):
+        config_from_mapping(mapping)
+
+
+def test_cloud_backends_are_validated_enums() -> None:
+    config = config_from_mapping(
+        {
+            "asr": {
+                "batch_backend": "cloud",
+                "streaming_backend": "cloud-vad",
+                "final_backend": "cloud",
+            }
+        }
+    )
+    assert config.asr.batch_backend == "cloud"
+    assert config.asr.streaming_backend == "cloud-vad"
+    assert config.asr.final_backend == "cloud"

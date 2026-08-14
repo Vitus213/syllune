@@ -20,15 +20,49 @@ nix run . -- stream --mode quick --no-inject --json
 
 真实录音需要可用的 PipeWire 会话；文本注入需要 Wayland、`wtype`，或允许使用 `wl-copy` 的剪贴板后备路径。`doctor --allow-missing-models` 只允许三个模型尚未安装，`pw-record`、`wtype`、`wl-copy`、`wl-paste`、`sherpa_onnx`、XDG 目录和 GlobalShortcuts 门户检查仍须通过。
 
+## 原生 Syllune 流式 CLI
+
+Rust 原生 CLI 是独立的 `syllune` 包，当前提供 `stream` 和 `doctor` tracer；默认云端后端在说话期间持续发送 PCM，`local-streaming` 后端使用 Sherpa-ONNX 在线 Paraformer。它不依赖 Python 运行时，也不把模型权重打入 Nix store。
+
+```bash
+nix build .#syllune
+nix run .#syllune -- --help
+nix run .#syllune -- doctor
+```
+
+Rust 包当前没有自己的模型下载器。使用既有、带固定 URL/SHA-256、成员白名单和原子激活的 ModelManager 安装本地在线模型，再把激活目录交给 `syllune`：
+
+```bash
+nix run . -- model install streaming-paraformer-bilingual-zh-en
+MODEL_DIR="$(readlink -f "${XDG_DATA_HOME:-$HOME/.local/share}/type4me-linux/models/streaming-paraformer-bilingual-zh-en/current")"
+```
+
+在配置文件中指定该目录：
+
+```toml
+[asr]
+streaming_backend = "local-streaming"
+local_model_dir = "/home/user/.local/share/type4me-linux/models/streaming-paraformer-bilingual-zh-en/current"
+```
+
+然后运行本地路径；第一次 `Ctrl-C` 冲刷并完成当前会话，第二次才取消：
+
+```bash
+nix run .#syllune -- --config ~/.config/type4me-linux/syllune.toml stream --json --no-inject
+```
+
+`local-streaming` 不建立云端连接。`cloud-realtime` 需要配置文件中的 `cloud.api_key`，且包含密钥的文件权限不得宽于 `0600`。
+
 ## 模型目录
 
-内置模型目录包含三个稳定 ID：
+内置模型目录包含四个稳定 ID：
 
 | ID | 用途 | 必需运行时文件 |
 | --- | --- | --- |
 | `sensevoice-int8` | 批量识别和模拟流式草稿 | `model.int8.onnx`、`tokens.txt` |
 | `silero-vad` | 语音活动检测 | `silero_vad.onnx` |
 | `qwen3-asr-0.6b-int8` | 批量识别或流式会话最终校准 | `conv_frontend.onnx`、`encoder.int8.onnx`、`decoder.int8.onnx`、`tokenizer/merges.txt`、`tokenizer/tokenizer_config.json`、`tokenizer/vocab.json` |
+| `streaming-paraformer-bilingual-zh-en` | Rust 本地原生流式识别（中英） | `encoder.int8.onnx`、`decoder.int8.onnx`、`tokens.txt` |
 
 目录源数据如下；大小是安装时的硬上限和完整长度要求，不是下载进度估算：
 
@@ -37,6 +71,7 @@ nix run . -- stream --mode quick --no-inject --json
 | `sensevoice-int8` | `2024-07-17`；`163002883` | <https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2><br>`sha256-fR76ITimWwtIjfN/i4nj2RpgZ25Bb1FblSNY2D39NH4=` |
 | `silero-vad` | `asr-models`；`643854` | <https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx><br>`sha256-niRJ4Qh0ltjUyrqQfyPgvT942R+lUkebucI6wJy7H9Y=` |
 | `qwen3-asr-0.6b-int8` | `2026-03-25`；`878702423` | <https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2><br>`sha256-OT+KFOL1+5Z0aqqzQpl6QGQQAfvVv5WSoICoMpF47pY=` |
+| `streaming-paraformer-bilingual-zh-en` | `asr-models-2024-03-10`；`1047319737` | <https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2><br>`sha256-VGKh/OQmk96uVyrx6MRocSSxKqhf5h/00xaLtSgOIF8=` |
 
 常用命令：
 
@@ -69,21 +104,23 @@ ${XDG_STATE_HOME:-~/.local/state}/type4me-linux/model-manager/
 
 ## 识别方式
 
-批量命令支持 `fake`、`sensevoice`、`qwen3-sherpa` 和 `hybrid`：
+批量命令支持 `fake`、`sensevoice`、`qwen3-sherpa`、`hybrid` 和 `cloud`：
 
 ```bash
 type4me-linux transcribe ./audio.wav --backend sensevoice
 type4me-linux transcribe ./audio.wav --backend hybrid --json
 type4me-linux transcribe ./audio.wav --backend fake --inject
+type4me-linux transcribe ./audio.wav --backend cloud --json
 type4me-linux record --seconds 5 --backend hybrid --no-inject
 ```
 
 `hybrid` 先用 SenseVoice 识别完整 WAV，再用 Qwen3-ASR 识别同一音频；Qwen3-ASR 失败时保留 SenseVoice 文本并把后端标记为 `hybrid-fallback`。Qwen 输入会按 `asr.qwen3_max_segment_seconds` 分段，避免当前模型的 512 上下文窗口截断长音频。
 
-实时命令目前只接受 `sensevoice-vad`：
+实时命令支持 `sensevoice-vad` 与 `cloud-vad`：
 
 ```bash
 type4me-linux stream --backend sensevoice-vad --mode quick
+type4me-linux stream --backend cloud-vad --mode quick --json
 type4me-linux stream --mode 语音润色 --no-inject
 type4me-linux stream --mode quick --json
 ```
@@ -91,6 +128,50 @@ type4me-linux stream --mode quick --json
 这里的“流式”是模拟流式，而不是模型的原生逐 token 流。实时采集严格要求 PCM16-LE、16 kHz、单声道；`pw-record` 默认每 32 ms 读取一个 1,024 字节块并写入临时 WAV。Silero VAD 以 512 样本窗口分段，活动语音期间默认每 200 ms 用新的 SenseVoice 离线流解码当前片段，两个间隔分别由 `capture.chunk_millis` 和 `asr.partial_interval_millis` 控制。VAD 释放片段后，文本进入 `confirmed_segments`；EOF 的非空对齐尾部会先交给 SenseVoice，再执行 `flush()`。正常停止默认直接采用 SenseVoice 的 `sensevoice-vad` 最终文本；`qwen3-sherpa` 是显式的准确性优先校准策略，成功后后端为 `hybrid`，失败会产生 `warning` 并发布 `hybrid-fallback` 的 SenseVoice 文本。旧配置的 `final_backend = "none"` 必须改为 `"sensevoice"`。
 
 普通模式只把唯一最终权威文本写到 stdout；交互终端上的局部文本显示在 stderr。任何局部文本都不会注入目标应用，最终文本最多注入一次。
+
+### 云端语音识别
+
+`cloud`（批量）与 `cloud-vad`（实时）把识别委托给百炼（DashScope）云端模型。
+音频以 base64 data URI 直传，不经过第三方上传。配置方式与 omp 的 models 配置
+一致：url + apiKey（环境变量）+ model。
+
+```toml
+[cloud]
+base_url = "https://dashscope.aliyuncs.com"
+api_key = "sk-..."          # 与 omp models.yml 的 apiKey 字段一致的明文密钥
+model = "qwen3-asr-flash-2026-02-10"
+timeout_seconds = 60.0
+
+[asr]
+batch_backend = "cloud"
+streaming_backend = "cloud-vad"
+final_backend = "cloud"
+```
+
+```bash
+type4me-linux transcribe ./audio.wav --backend cloud
+type4me-linux stream --backend cloud-vad --mode quick
+```
+
+密钥直接写在 `[cloud].api_key`（不依赖环境变量）；请确保配置文件权限为
+`0600`（`chmod 600 ~/.config/type4me-linux/config.toml`）。缺少密钥、HTTP
+错误、超时或响应格式无效时批量命令直接报错；`cloud-vad` 实时会话对单个
+语音段的失败会跳过该段并在结束时发布 `warning`，不中断整段录音。
+
+候选模型按 `cloud.model` 枚举约束，实测优先级（`scripts/asr_benchmark/`，
+TTS 语料 dev/test 分离，36 样本）：
+
+| 优先级 | 模型 | 内容 CER | 平均时延 | 说明 |
+| --- | --- | --- | --- | --- |
+| 1（默认） | `qwen3-asr-flash-2026-02-10` | 0.0110 | 0.64s | 专用 ASR，无聊天漂移，最快 |
+| 2 | `qwen3.5-omni-flash` | 0.0089 | 0.88s | 更准；需内置“只转写”系统提示 |
+| 3 | `qwen3-omni-flash` | 0.0090 | 0.86s | 同上 |
+| 本地基线 | `qwen3-sherpa` | 0.0229 | 1.04s | 完全离线 |
+| 本地基线 | `sensevoice` | 0.1008 | 0.14s | 草稿/流式 |
+
+回归测试：`nix develop --command python scripts/asr_benchmark/benchmark.py
+--split test`，内容 CER 相对上一轮劣化超过 0.005 视为回归（dev/test 分离、
+语料与报告均入库于 `scripts/asr_benchmark/`，音频按需由 TTS 生成并缓存）。
 
 ### JSON 事件与信号
 
@@ -196,6 +277,12 @@ base_url = ""
 model = ""
 api_key_env = ""
 timeout_seconds = 30.0
+
+[cloud]
+base_url = "https://dashscope.aliyuncs.com"
+api_key = ""
+model = "qwen3-asr-flash-2026-02-10"
+timeout_seconds = 60.0
 
 [history]
 enabled = true

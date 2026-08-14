@@ -101,6 +101,7 @@ class OpenAICompatibleProcessor:
         *,
         base_url: str,
         model: str,
+        api_key: str = "",
         api_key_env: str = "",
         timeout_seconds: float = 30.0,
         http_client: HttpClient | Callable[..., Any] | None = None,
@@ -109,6 +110,7 @@ class OpenAICompatibleProcessor:
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
+        self.api_key = api_key
         self.api_key_env = api_key_env
         self.timeout_seconds = timeout_seconds
         self._http_client = http_client or UrllibHttpClient()
@@ -121,6 +123,7 @@ class OpenAICompatibleProcessor:
             provider="openai-compatible",
             endpoint=f"{self.base_url}/chat/completions",
             model=self.model,
+            api_key=self.api_key,
             api_key_env=self.api_key_env,
             timeout_seconds=self.timeout_seconds,
             http_client=self._http_client,
@@ -137,6 +140,7 @@ class OllamaProcessor:
         *,
         base_url: str,
         model: str,
+        api_key: str = "",
         api_key_env: str = "",
         timeout_seconds: float = 30.0,
         http_client: HttpClient | Callable[..., Any] | None = None,
@@ -145,6 +149,7 @@ class OllamaProcessor:
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
+        self.api_key = api_key
         self.api_key_env = api_key_env
         self.timeout_seconds = timeout_seconds
         self._http_client = http_client or UrllibHttpClient()
@@ -157,6 +162,7 @@ class OllamaProcessor:
             provider="ollama",
             endpoint=f"{self.base_url}/api/chat",
             model=self.model,
+            api_key=self.api_key,
             api_key_env=self.api_key_env,
             timeout_seconds=self.timeout_seconds,
             http_client=self._http_client,
@@ -177,6 +183,7 @@ def _process_chat(
     provider: Literal["openai-compatible", "ollama"],
     endpoint: str,
     model: str,
+    api_key: str,
     api_key_env: str,
     timeout_seconds: float,
     http_client: HttpClient | Callable[..., Any],
@@ -189,13 +196,14 @@ def _process_chat(
     if request.mode.id == "quick":
         return TextProcessResult(request.text, "bypassed", "none")
 
-    secret = _environment_value(environment, api_key_env) if api_key_env else None
-    if api_key_env and not secret:
+    secret = api_key.strip() or (_environment_value(environment, api_key_env) if api_key_env else None)
+    if not secret and (api_key_env or not api_key):
+        hint = f"环境变量 {api_key_env} 未设置" if api_key_env else "配置项 processing.api_key 为空"
         return _fallback(
             request,
             provider,
             "missing-secret",
-            f"环境变量 {api_key_env} 未设置，已保留原始文本。",
+            f"{hint}，已保留原始文本。",
         )
 
     headers = {"Content-Type": "application/json", "Accept": "application/json"}

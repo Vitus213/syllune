@@ -279,7 +279,7 @@ def _fmt(value: float | None) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="ASR 候选模型基准测试")
-    parser.add_argument("--split", choices=("dev", "test", "all"), default="all")
+    parser.add_argument("--split", choices=("dev", "test", "real", "all"), default="all")
     parser.add_argument("--models", default=DEFAULT_MODELS, help="逗号分隔的模型键")
     parser.add_argument("--limit", type=int, default=0, help="每个模型最多样本数（0=全部）")
     parser.add_argument("--api-key-env", default="BAILIAN_API_KEY")

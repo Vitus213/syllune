@@ -12,6 +12,7 @@ def test_catalog_contains_exact_pinned_sources() -> None:
         "sensevoice-int8",
         "silero-vad",
         "qwen3-asr-0.6b-int8",
+        "streaming-paraformer-bilingual-zh-en",
     }
     expected = {
         "sensevoice-int8": (
@@ -30,6 +31,12 @@ def test_catalog_contains_exact_pinned_sources() -> None:
             "sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2",
             "sha256-OT+KFOL1+5Z0aqqzQpl6QGQQAfvVv5WSoICoMpF47pY=",
             878_702_423,
+        ),
+        "streaming-paraformer-bilingual-zh-en": (
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
+            "sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2",
+            "sha256-VGKh/OQmk96uVyrx6MRocSSxKqhf5h/00xaLtSgOIF8=",
+            1_047_319_737,
         ),
     }
     for model_id, values in expected.items():
@@ -66,6 +73,15 @@ def test_catalog_records_exact_runtime_layouts() -> None:
         "tokenizer/vocab.json",
     )
     assert "test_wavs/transcript.txt" in qwen.allowed_members
+
+    streaming = MODEL_CATALOG["streaming-paraformer-bilingual-zh-en"]
+    assert streaming.archive_type == "tar.bz2"
+    assert streaming.top_level_directory == "sherpa-onnx-streaming-paraformer-bilingual-zh-en"
+    assert streaming.required_paths == (
+        "encoder.int8.onnx",
+        "decoder.int8.onnx",
+        "tokens.txt",
+    )
 
 
 def test_model_specs_and_catalog_are_immutable() -> None:

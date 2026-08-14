@@ -72,6 +72,17 @@ class ProcessingConfig:
     timeout_seconds: float = 30.0
 
 
+CLOUD_MODEL_IDS = ("qwen3-asr-flash-2026-02-10", "qwen3-omni-flash", "qwen3.5-omni-flash")
+
+
+@dataclass(frozen=True)
+class CloudConfig:
+    base_url: str = "https://dashscope.aliyuncs.com"
+    api_key: str = ""
+    model: str = "qwen3-asr-flash-2026-02-10"
+    timeout_seconds: float = 60.0
+
+
 @dataclass(frozen=True)
 class HistoryConfig:
     enabled: bool = True
@@ -91,6 +102,7 @@ class Config:
     processing: ProcessingConfig = field(default_factory=ProcessingConfig)
     history: HistoryConfig = field(default_factory=HistoryConfig)
     daemon: DaemonConfig = field(default_factory=DaemonConfig)
+    cloud: CloudConfig = field(default_factory=CloudConfig)
 
 
 def load_config(path: str | Path | None = None) -> Config:
@@ -108,7 +120,7 @@ def load_config(path: str | Path | None = None) -> Config:
 def config_from_mapping(raw: Mapping[str, Any]) -> Config:
     if not isinstance(raw, Mapping):
         raise TypeError("配置根必须是 TOML 表。")
-    allowed_sections = {"asr", "capture", "inject", "processing", "history", "daemon"}
+    allowed_sections = {"asr", "capture", "inject", "processing", "history", "daemon", "cloud"}
     unknown_sections = sorted(set(raw) - allowed_sections)
     if unknown_sections:
         raise ValueError(f"配置包含未知顶层节：{', '.join(unknown_sections)}")
@@ -120,6 +132,7 @@ def config_from_mapping(raw: Mapping[str, Any]) -> Config:
         processing=_build_section(ProcessingConfig, raw.get("processing", {}), "processing"),
         history=_build_section(HistoryConfig, raw.get("history", {}), "history"),
         daemon=_build_section(DaemonConfig, raw.get("daemon", {}), "daemon"),
+        cloud=_build_section(CloudConfig, raw.get("cloud", {}), "cloud"),
     )
     _validate_config(config)
     return config
@@ -137,9 +150,13 @@ def _build_section(section_type: Callable[..., _T], raw: object, section_name: s
 
 def _validate_config(config: Config) -> None:
     asr = config.asr
-    _enum("asr.batch_backend", asr.batch_backend, {"fake", "sensevoice", "qwen3-sherpa", "hybrid"})
-    _enum("asr.streaming_backend", asr.streaming_backend, {"sensevoice-vad"})
-    _enum("asr.final_backend", asr.final_backend, {"sensevoice", "qwen3-sherpa"})
+    _enum(
+        "asr.batch_backend",
+        asr.batch_backend,
+        {"fake", "sensevoice", "qwen3-sherpa", "hybrid", "cloud"},
+    )
+    _enum("asr.streaming_backend", asr.streaming_backend, {"sensevoice-vad", "cloud-vad"})
+    _enum("asr.final_backend", asr.final_backend, {"sensevoice", "qwen3-sherpa", "cloud"})
     _integer("asr.partial_interval_millis", asr.partial_interval_millis, minimum=32, maximum=5000)
     _model_id("asr.sensevoice_model_id", asr.sensevoice_model_id)
     _model_id("asr.vad_model_id", asr.vad_model_id)
@@ -198,6 +215,12 @@ def _validate_config(config: Config) -> None:
     _boolean("history.enabled", config.history.enabled)
     _nonempty("daemon.host", config.daemon.host)
     _integer("daemon.port", config.daemon.port, minimum=1, maximum=65535)
+
+    cloud = config.cloud
+    _nonempty("cloud.base_url", cloud.base_url)
+    _string("cloud.api_key", cloud.api_key)
+    _enum("cloud.model", cloud.model, set(CLOUD_MODEL_IDS))
+    _number("cloud.timeout_seconds", cloud.timeout_seconds, minimum=0.0, strict_minimum=True)
 
 
 def _string(name: str, value: object) -> None:

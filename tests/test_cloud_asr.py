@@ -250,20 +250,30 @@ def test_needs_system_prompt_only_for_omni_models() -> None:
     assert needs_system_prompt("qwen3.5-omni-flash") is True
 
 
-def test_missing_api_key_env_raises_authentication_error(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    monkeypatch.delenv("TYPE4ME_CLOUD_TEST_KEY", raising=False)
-    from type4me_linux.cloud_asr import resolve_api_key
+def test_missing_api_key_raises_before_request() -> None:
+    import numpy as np
 
-    with pytest.raises(CloudASRAuthenticationError, match="TYPE4ME_CLOUD_TEST_KEY"):
-        resolve_api_key("TYPE4ME_CLOUD_TEST_KEY")
+    client = _ScriptedClient()
+    provider = CloudASRProvider(
+        CloudConfig(api_key=""),
+        client_factory=lambda **_: client,
+    )
+    with pytest.raises(CloudASRAuthenticationError, match="api_key"):
+        provider.transcribe_samples(np.zeros(320, dtype=np.float32))
+    assert client.calls == []
 
 
-def test_blank_api_key_env_raises_authentication_error(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    monkeypatch.setenv("TYPE4ME_CLOUD_TEST_KEY", "   ")
-    from type4me_linux.cloud_asr import resolve_api_key
+def test_blank_api_key_raises_before_request() -> None:
+    import numpy as np
 
-    with pytest.raises(CloudASRAuthenticationError):
-        resolve_api_key("TYPE4ME_CLOUD_TEST_KEY")
+    client = _ScriptedClient()
+    provider = CloudASRProvider(
+        CloudConfig(api_key="   "),
+        client_factory=lambda **_: client,
+    )
+    with pytest.raises(CloudASRAuthenticationError, match="api_key"):
+        provider.transcribe_samples(np.zeros(320, dtype=np.float32))
+    assert client.calls == []
 
 
 # ---------------------------------------------------------------- provider
@@ -289,15 +299,15 @@ def _provider(
     client: _ScriptedClient,
     *,
     model: str = "qwen3-asr-flash-2026-02-10",
+    api_key: str = "test-key",
 ) -> CloudASRProvider:
     return CloudASRProvider(
-        CloudConfig(model=model, api_key_env="TYPE4ME_CLOUD_TEST_KEY"),
+        CloudConfig(model=model, api_key=api_key),
         client_factory=lambda **_: client,
     )
 
 
-def test_provider_batch_transcribe_reads_wav_and_marks_backend(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    monkeypatch.setenv("TYPE4ME_CLOUD_TEST_KEY", "secret")
+def test_provider_batch_transcribe_reads_wav_and_marks_backend(tmp_path: Path) -> None:
     wav = tmp_path / "clip.wav"
     import wave
 
@@ -319,8 +329,7 @@ def test_provider_batch_transcribe_reads_wav_and_marks_backend(tmp_path, monkeyp
     assert client.calls[0]["system"] is None
 
 
-def test_provider_transcribe_samples_encodes_pcm16(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    monkeypatch.setenv("TYPE4ME_CLOUD_TEST_KEY", "secret")
+def test_provider_transcribe_samples_encodes_pcm16() -> None:
     import numpy as np
 
     samples = np.zeros(320, dtype=np.float32)
@@ -333,8 +342,7 @@ def test_provider_transcribe_samples_encodes_pcm16(tmp_path, monkeypatch) -> Non
     assert pcm[:2] == int(0.5 * 32768).to_bytes(2, "little", signed=True)
 
 
-def test_provider_omni_model_sends_transcribe_persona(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    monkeypatch.setenv("TYPE4ME_CLOUD_TEST_KEY", "secret")
+def test_provider_omni_model_sends_transcribe_persona() -> None:
     import numpy as np
 
     client = _ScriptedClient()
@@ -345,19 +353,17 @@ def test_provider_omni_model_sends_transcribe_persona(monkeypatch) -> None:  # t
     assert client.calls[0]["system"] == SYSTEM_TRANSCRIBE_PROMPT
 
 
-def test_provider_missing_key_raises_before_request(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    monkeypatch.delenv("TYPE4ME_CLOUD_TEST_KEY", raising=False)
+def test_provider_missing_key_same_as_helper_default() -> None:
     import numpy as np
 
     client = _ScriptedClient()
-    provider = _provider(client)
-    with pytest.raises(CloudASRAuthenticationError):
+    provider = _provider(client, api_key="")
+    with pytest.raises(CloudASRAuthenticationError, match="api_key"):
         provider.transcribe_samples(np.zeros(320, dtype=np.float32))
     assert client.calls == []
 
 
-def test_provider_wav_sample_rate_mismatch_rejected(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    monkeypatch.setenv("TYPE4ME_CLOUD_TEST_KEY", "secret")
+def test_provider_wav_sample_rate_mismatch_rejected(tmp_path: Path) -> None:
     import wave
 
     wav = tmp_path / "bad.wav"
@@ -372,10 +378,9 @@ def test_provider_wav_sample_rate_mismatch_rejected(tmp_path, monkeypatch) -> No
         provider.transcribe(wav)
 
 
-def test_create_provider_cloud_branch(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    monkeypatch.setenv("TYPE4ME_CLOUD_TEST_KEY", "secret")
+def test_create_provider_cloud_branch(tmp_path: Path) -> None:
     config = ASRConfig(batch_backend="cloud")
-    provider = create_provider(config, cloud=CloudConfig())
+    provider = create_provider(config, cloud=CloudConfig(api_key="test-key"))
     assert isinstance(provider, CloudASRProvider)
 
 
@@ -521,3 +526,11 @@ def test_cloud_vad_requires_vad_model_file(tmp_path: Path) -> None:
             decoder,  # type: ignore[arg-type]
             vad_model_dir=tmp_path / "missing",
         )
+
+
+def test_empty_content_list_yields_empty_text() -> None:
+    body = json.dumps(
+        {"output": {"choices": [{"message": {"content": [], "role": "assistant"}}]}}
+    ).encode()
+    client = _make_client(urlopen=lambda *args, **kwargs: FakeResponse(200, body))
+    assert client.transcribe_audio(b"silence") == ""

@@ -24,8 +24,8 @@ from .paths import AppPaths
 from .pipeline import RecognitionRequest, VoiceInputPipeline
 from .vocabulary import VocabularyService
 
-BATCH_BACKENDS = ("fake", "sensevoice", "qwen3-sherpa", "hybrid")
-STREAM_BACKENDS = ("sensevoice-vad",)
+BATCH_BACKENDS = ("fake", "sensevoice", "qwen3-sherpa", "hybrid", "cloud")
+STREAM_BACKENDS = ("sensevoice-vad", "cloud-vad")
 
 
 class _ChineseArgumentParser(argparse.ArgumentParser):

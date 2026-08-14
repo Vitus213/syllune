@@ -10,3 +10,4 @@ dist/
 build/
 models/
 *.wav
+reports/

@@ -23,7 +23,7 @@ from type4me_linux.providers import RecognitionResult
         (["transcribe"], "缺少必需参数：wav"),
         (
             ["transcribe", "/tmp/input.wav", "--backend", "unknown"],
-            "参数 --backend：无效选项 'unknown'（可选值：fake, sensevoice, qwen3-sherpa, hybrid）",
+            "参数 --backend：无效选项 'unknown'（可选值：fake, sensevoice, qwen3-sherpa, hybrid, cloud）",
         ),
         (["record", "--seconds", "later"], "参数 --seconds：无法将 'later' 解析为浮点数。"),
         (["record", "--seconds"], "参数 --seconds：必须提供一个值。"),
@@ -525,3 +525,57 @@ def test_control_command_reports_resident_method_failure(monkeypatch, capsys) ->
 
     assert main(["toggle"]) == 1
     assert capsys.readouterr().err == "无法连接常驻服务：D-Bus 名称无所有者\n"
+
+
+def test_backend_override_accepts_cloud_for_batch_and_stream() -> None:
+    config = Config()
+
+    batch = _with_backend(config, "cloud")
+    stream = _with_backend(config, "cloud-vad", streaming=True)
+
+    assert batch.asr.batch_backend == "cloud"
+    assert stream.asr.streaming_backend == "cloud-vad"
+    assert stream.asr.batch_backend == config.asr.batch_backend
+
+
+def test_transcribe_accepts_cloud_backend(capsys, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    class _Pipeline:
+        def __init__(self, config) -> None:  # type: ignore[no-untyped-def]
+            assert config.asr.batch_backend == "cloud"
+
+        def run_once(self, audio_path: object, inject: bool) -> object:  # type: ignore[no-untyped-def]
+            return type(
+                "Result",
+                (),
+                {
+                    "recognition": RecognitionResult("云端转写文本", "cloud"),
+                    "injection": None,
+                },
+            )()
+
+    monkeypatch.setattr("type4me_linux.cli.VoiceInputPipeline", _Pipeline)
+    code = main(["transcribe", "/tmp/input.wav", "--backend", "cloud"])
+
+    assert code == 0
+    assert capsys.readouterr().out == "云端转写文本\n"
+
+
+def test_stream_with_cloud_vad_backend_runs(capsys, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    seen: dict[str, object] = {}
+
+    class _Pipeline:
+        def __init__(self, config) -> None:  # type: ignore[no-untyped-def]
+            seen["streaming_backend"] = config.asr.streaming_backend
+
+        def create_session(self, _request: object) -> object:  # type: ignore[no-untyped-def]
+            class _Session:
+                def run(self) -> None:
+                    pass
+
+            return _Session()
+
+    monkeypatch.setattr("type4me_linux.cli.VoiceInputPipeline", _Pipeline)
+    code = main(["stream", "--backend", "cloud-vad", "--no-inject"])
+
+    assert code == 0
+    assert seen["streaming_backend"] == "cloud-vad"

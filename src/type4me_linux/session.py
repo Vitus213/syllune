@@ -71,6 +71,7 @@ class RecognitionSession:
         injector: Injector | None = None,
         event_sink: EventSink | None = None,
         startup_warnings: Iterable[str] = (),
+        calibration_backend: str = "hybrid",
     ) -> None:
         if finalizer is None and streamer is None:
             raise ValueError("识别会话必须配置批量终结器或流式识别器")
@@ -78,6 +79,7 @@ class RecognitionSession:
         self._finalizer = finalizer
         self._streamer = streamer
         self._calibrator = calibrator
+        self._calibration_backend = calibration_backend
         self._processor = processor or _identity
         self._history_writer = history_writer
         self._failed_history_writer = failed_history_writer
@@ -370,21 +372,21 @@ class RecognitionSession:
         if self._calibrator is None:
             return sensevoice
         if not isinstance(artifact, (str, Path)):
-            self.publish_warning("Qwen3-ASR 校准缺少 WAV 文件，已保留 SenseVoice 结果")
+            self.publish_warning("最终校准缺少 WAV 文件，已保留草稿结果")
             return replace(sensevoice, backend="hybrid-fallback")
         try:
             result: RecognitionResult = self._calibrator.transcribe(Path(artifact))
             if not result.text.strip():
-                raise ValueError("Qwen3-ASR 返回了空文本")
+                raise ValueError("最终校准模型返回了空文本")
         except Exception as exc:
-            self.publish_warning(f"Qwen3-ASR 校准失败，已保留 SenseVoice 结果：{exc}")
+            self.publish_warning(f"最终校准失败，已保留草稿结果：{exc}")
             return replace(sensevoice, backend="hybrid-fallback")
         return replace(
             sensevoice,
             partial_text="",
             authoritative_text=result.text.strip(),
             is_final=True,
-            backend="hybrid",
+            backend=self._calibration_backend,
         )
 
     def _process(self, transcript: RecognitionTranscript) -> RecognitionTranscript:

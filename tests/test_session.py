@@ -225,7 +225,7 @@ def test_qwen_failure_warns_then_finalizes_hybrid_fallback(tmp_path: Path) -> No
     ]
     warning = session.events[2]
     final = session.events[3].transcript
-    assert warning.message is not None and "Qwen3-ASR 校准失败" in warning.message
+    assert warning.message is not None and "最终校准失败" in warning.message
     assert final is not None
     assert final.authoritative_text == "SenseVoice 原文"
     assert final.backend == "hybrid-fallback"
