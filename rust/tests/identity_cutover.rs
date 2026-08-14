@@ -16,9 +16,19 @@ fn read(path: &Path) -> String {
     fs::read_to_string(path).unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
 }
 
+/// Repo-root files are absent inside the Nix build sandbox (only `rust/`
+/// is shipped). Repo-level identity checks only run in a full checkout.
+fn repo_file(name: &str) -> Option<std::path::PathBuf> {
+    let path = repo_root().join(name);
+    path.exists().then_some(path)
+}
+
 #[test]
 fn flake_default_package_is_syllune_and_drops_python_identity() {
-    let flake = read(&repo_root().join("flake.nix"));
+    let Some(flake_path) = repo_file("flake.nix") else {
+        return;
+    };
+    let flake = read(&flake_path);
     assert!(
         flake.contains("packages.default = syllune;"),
         "default package must be syllune"
@@ -39,7 +49,10 @@ fn flake_default_package_is_syllune_and_drops_python_identity() {
 
 #[test]
 fn home_manager_module_exposes_only_syllune_options() {
-    let module = read(&repo_root().join("nix/home-manager.nix"));
+    let Some(module_path) = repo_file("nix/home-manager.nix") else {
+        return;
+    };
+    let module = read(&module_path);
     assert!(module.contains("options.programs.syllune"));
     assert!(
         !module.contains("programs.type4me-linux"),
