@@ -3,6 +3,7 @@ pub mod batch_cmd;
 pub mod batch;
 pub mod config;
 pub mod doctor;
+pub mod daemon;
 pub mod coordinator;
 pub mod history;
 pub mod history_cmd;

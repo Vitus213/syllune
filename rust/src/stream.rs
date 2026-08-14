@@ -53,6 +53,16 @@ struct JsonEvent<'a> {
 }
 
 pub async fn run(options: StreamOptions) -> Result<i32, StreamError> {
+    let control = control_receiver();
+    run_with_control(options, control).await
+}
+
+/// Run a streaming session driven by an externally supplied control channel
+/// instead of process signals. Used by the headless daemon.
+pub async fn run_with_control(
+    options: StreamOptions,
+    control: tokio::sync::mpsc::Receiver<ControlCommand>,
+) -> Result<i32, StreamError> {
     let mut config = AppConfig::load_optional(options.config_path.as_deref())?;
     if let Some(backend) = options.backend.as_deref() {
         config.asr.streaming_backend = backend.to_owned();
@@ -61,13 +71,17 @@ pub async fn run(options: StreamOptions) -> Result<i32, StreamError> {
         })?)?;
     }
     match config.asr.streaming_backend.as_str() {
-        "cloud-realtime" => run_cloud(config, options).await,
-        "local-streaming" => run_local(config, options).await,
+        "cloud-realtime" => run_cloud(config, options, control).await,
+        "local-streaming" => run_local(config, options, control).await,
         value => Err(StreamError::UnsupportedBackend(value.to_owned())),
     }
 }
 
-async fn run_cloud(config: AppConfig, options: StreamOptions) -> Result<i32, StreamError> {
+async fn run_cloud(
+    config: AppConfig,
+    options: StreamOptions,
+    control: tokio::sync::mpsc::Receiver<ControlCommand>,
+) -> Result<i32, StreamError> {
     if config.cloud.api_key.trim().is_empty() {
         return Err(StreamError::MissingApiKey);
     }
@@ -86,14 +100,18 @@ async fn run_cloud(config: AppConfig, options: StreamOptions) -> Result<i32, Str
         pipeline.processor,
         WtypeInjector,
         pipeline.history,
-        control_receiver(),
+        control,
         &mut StdoutSink::new(options.json),
     )
     .await;
     Ok(code)
 }
 
-async fn run_local(config: AppConfig, options: StreamOptions) -> Result<i32, StreamError> {
+async fn run_local(
+    config: AppConfig,
+    options: StreamOptions,
+    control: tokio::sync::mpsc::Receiver<ControlCommand>,
+) -> Result<i32, StreamError> {
     // Config-level validation (mode, processing) precedes model resolution:
     // invalid configuration must fail before touching the model store.
     let pipeline = build_pipeline(&config, &options)?;
@@ -121,7 +139,7 @@ async fn run_local(config: AppConfig, options: StreamOptions) -> Result<i32, Str
         pipeline.processor,
         WtypeInjector,
         pipeline.history,
-        control_receiver(),
+        control,
         &mut StdoutSink::new(options.json),
     )
     .await;

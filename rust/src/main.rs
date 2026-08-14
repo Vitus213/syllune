@@ -230,6 +230,22 @@ async fn main() {
             }
             i32::from(!all_ok)
         }
+        Command::Daemon => {
+            let options = syllune::stream::StreamOptions {
+                config_path: cli.config,
+                backend: None,
+                json: false,
+                inject: true,
+                mode: "quick".to_owned(),
+            };
+            match syllune::daemon::serve(options).await {
+                Ok(()) => 0,
+                Err(error) => {
+                    eprintln!("Syllune: {error}");
+                    1
+                }
+            }
+        }
         other => {
             eprintln!("Syllune: {other:?} is not available in this build");
             2
