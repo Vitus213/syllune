@@ -1,3 +1,6 @@
+//! Production wiring: config -> coordinator with pw-record capture,
+//! cloud/local transports, stdout/stderr event sink and wtype injection.
+
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -5,14 +8,16 @@ use std::time::Duration;
 
 use serde::Serialize;
 use tokio::process::Command;
-use tokio::time::{timeout, timeout_at};
+use tokio::time::timeout;
 
 use crate::capture::RawCapture;
 use crate::config::{AppConfig, ConfigError};
-use crate::realtime::{RealtimeEvent, RealtimeSession};
-use crate::session::{
-    RecognitionSession, SessionAction, SessionState, SessionUpdate, TranscriptSnapshot,
+use crate::coordinator::{
+    AudioCapture, BackendTransport, ControlCommand, EventSink, HistoryEntry, HistoryRecorder,
+    InjectionResult, OutputEvent, SessionPlan, TextInjector, TextProcessor,
 };
+use crate::realtime::{RealtimeEvent, RealtimeSession};
+use crate::session::TranscriptSnapshot;
 
 #[derive(Debug, Clone)]
 pub struct StreamOptions {
@@ -20,6 +25,7 @@ pub struct StreamOptions {
     pub backend: Option<String>,
     pub json: bool,
     pub inject: bool,
+    pub mode: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -34,8 +40,6 @@ pub enum StreamError {
     Realtime(#[from] io::Error),
     #[error("capture: {0}")]
     Capture(String),
-    #[error("injection: {0}")]
-    Injection(String),
 }
 
 #[derive(Debug, Serialize)]
@@ -46,13 +50,6 @@ struct JsonEvent<'a> {
     transcript: Option<&'a TranscriptSnapshot>,
     message: Option<&'a str>,
     injection: Option<&'a InjectionResult>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct InjectionResult {
-    pub ok: bool,
-    pub method: String,
-    pub message: String,
 }
 
 pub async fn run(options: StreamOptions) -> Result<i32, StreamError> {
@@ -70,471 +67,364 @@ pub async fn run(options: StreamOptions) -> Result<i32, StreamError> {
     }
 }
 
-async fn run_local(config: AppConfig, options: StreamOptions) -> Result<i32, StreamError> {
-    const CAPTURE_STOP_TIMEOUT: Duration = Duration::from_secs(2);
-
-    let model_dir = match config.asr.local_model_dir {
-        Some(path) => path,
-        None => {
-            return fail_local(
-                &options,
-                0,
-                "local-streaming requires asr.local_model_dir for an installed online model",
-            )
-            .await;
-        }
-    };
-    let mut recognizer = match crate::local_asr::LocalStreamingRecognizer::new(&model_dir) {
-        Ok(recognizer) => recognizer,
-        Err(error) => return fail_local(&options, 0, &error.to_string()).await,
-    };
-    let mut session = RecognitionSession::new("local-streaming");
-    let mut sequence = 0_u64;
-    let mut capture = match RawCapture::start() {
-        Ok(capture) => capture,
-        Err(error) => return fail_local(&options, sequence, &format!("capture: {error}")).await,
-    };
-    emit(&options, &mut sequence, "ready", None, None, None)?;
-    let mut stop_signal = Box::pin(tokio::signal::ctrl_c());
-
-    loop {
-        tokio::select! {
-            signal = &mut stop_signal => {
-                signal.map_err(|error| StreamError::Capture(format!("stop signal: {error}")))?;
-                if session.request_stop() == SessionAction::Finish {
-                    break;
-                }
-            }
-            chunk = capture.next_chunk() => {
-                let chunk = match chunk {
-                    Ok(chunk) => chunk,
-                    Err(error) => return fail_local(&options, sequence, &format!("capture: {error}")).await,
-                };
-                match chunk {
-                    Some(pcm) => {
-                        let events = match recognizer.accept_pcm(&pcm) {
-                            Ok(events) => events,
-                            Err(error) => return fail_local(&options, sequence, &error.to_string()).await,
-                        };
-                        for event in events {
-                            let _ = handle_event(&mut session, event, &options, &mut sequence)?;
-                        }
-                        if session.state() == SessionState::Failed {
-                            return fail_local(&options, sequence, "local recognizer failed").await;
-                        }
-                    }
-                    None => {
-                        if session.request_stop() == SessionAction::Finish {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    let mut cancel_signal = Box::pin(tokio::signal::ctrl_c());
-    let tail = tokio::select! {
-        signal = &mut cancel_signal => {
-            signal.map_err(|error| StreamError::Capture(format!("cancel signal: {error}")))?;
-            return cancel_local(&options, &mut sequence).await;
-        }
-        result = timeout(CAPTURE_STOP_TIMEOUT, capture.stop()) => {
-            match result {
-                Ok(Ok(tail)) => tail,
-                Ok(Err(error)) => return fail_local(&options, sequence, &format!("capture stop: {error}")).await,
-                Err(_) => return fail_local(&options, sequence, "capture stop timed out").await,
-            }
-        }
-    };
-
-    if let Some(tail) = tail {
-        let events = match recognizer.accept_pcm(&tail) {
-            Ok(events) => events,
-            Err(error) => return fail_local(&options, sequence, &error.to_string()).await,
-        };
-        for event in events {
-            let _ = handle_event(&mut session, event, &options, &mut sequence)?;
-        }
-    }
-
-    let events = match recognizer.finish() {
-        Ok(events) => events,
-        Err(error) => return fail_local(&options, sequence, &error.to_string()).await,
-    };
-    for event in events {
-        let _ = handle_event(&mut session, event, &options, &mut sequence)?;
-    }
-    if session.state() == SessionState::Failed {
-        return fail_local(&options, sequence, "local recognizer failed").await;
-    }
-    finalize_session(&mut session, &options, &mut sequence).await
-}
-
 async fn run_cloud(config: AppConfig, options: StreamOptions) -> Result<i32, StreamError> {
-    const CAPTURE_STOP_TIMEOUT: Duration = Duration::from_secs(2);
-    const FINISH_TIMEOUT: Duration = Duration::from_secs(2);
-
     if config.cloud.api_key.trim().is_empty() {
         return Err(StreamError::MissingApiKey);
     }
-
-    let mut realtime = RealtimeSession::connect(
+    let transport = RealtimeSession::connect(
         &config.cloud.realtime_endpoint,
         &config.cloud.api_key,
         &config.cloud.realtime_model,
     )
     .await?;
-    let mut session = RecognitionSession::new("cloud-realtime");
-    let mut sequence = 0_u64;
+    let plan = session_plan(&options, "cloud-realtime");
+    let code = crate::coordinator::run_session(
+        plan,
+        PwCapture::default(),
+        CloudTransport(transport),
+        NoopProcessor,
+        WtypeInjector,
+        DiscardHistory,
+        control_receiver(),
+        &mut StdoutSink::new(options.json),
+    )
+    .await;
+    Ok(code)
+}
 
-    loop {
-        match realtime.next_event().await {
-            Ok(RealtimeEvent::Ready) => {
-                emit(&options, &mut sequence, "ready", None, None, None)?;
-                break;
-            }
-            Ok(RealtimeEvent::Error(message)) => {
-                return fail_stream(&realtime, &options, &mut sequence, &message).await;
-            }
-            Ok(_) => {}
-            Err(error) => {
-                let message = format!("realtime session: {error}");
-                return fail_stream(&realtime, &options, &mut sequence, &message).await;
-            }
-        }
-    }
-
-    let mut capture = match RawCapture::start() {
-        Ok(capture) => capture,
-        Err(error) => {
-            let message = format!("capture: {error}");
-            return fail_stream(&realtime, &options, &mut sequence, &message).await;
+async fn run_local(config: AppConfig, options: StreamOptions) -> Result<i32, StreamError> {
+    let model_dir = match config.asr.local_model_dir {
+        Some(path) => path,
+        None => {
+            let mut sink = StdoutSink::new(options.json);
+            let _ = sink.emit(OutputEvent::Error(
+                "local-streaming requires asr.local_model_dir for an installed online model"
+                    .to_owned(),
+            ));
+            let _ = sink.emit(OutputEvent::Completed);
+            return Ok(1);
         }
     };
-    let mut stop_signal = Box::pin(tokio::signal::ctrl_c());
+    let recognizer = match crate::local_asr::LocalStreamingRecognizer::new(&model_dir) {
+        Ok(recognizer) => recognizer,
+        Err(error) => {
+            let mut sink = StdoutSink::new(options.json);
+            let _ = sink.emit(OutputEvent::Error(error.to_string()));
+            let _ = sink.emit(OutputEvent::Completed);
+            return Ok(1);
+        }
+    };
+    let plan = session_plan(&options, "local-streaming");
+    let code = crate::coordinator::run_session(
+        plan,
+        PwCapture::default(),
+        LocalTransport::new(recognizer),
+        NoopProcessor,
+        WtypeInjector,
+        DiscardHistory,
+        control_receiver(),
+        &mut StdoutSink::new(options.json),
+    )
+    .await;
+    Ok(code)
+}
 
-    loop {
-        tokio::select! {
-            signal = &mut stop_signal => {
-                signal.map_err(|error| StreamError::Capture(format!("stop signal: {error}")))?;
-                if session.request_stop() == SessionAction::Finish {
+fn session_plan(options: &StreamOptions, backend: &str) -> SessionPlan {
+    let mut plan = SessionPlan::new(backend, options.inject);
+    plan.mode_id = options.mode.clone();
+    plan
+}
+
+fn control_receiver() -> tokio::sync::mpsc::Receiver<ControlCommand> {
+    let (tx, rx) = tokio::sync::mpsc::channel(4);
+    tokio::spawn(async move {
+        let mut first_stop = false;
+        loop {
+            let mut sigint = tokio::signal::unix::signal(
+                tokio::signal::unix::SignalKind::interrupt(),
+            )
+            .expect("install SIGINT handler");
+            let mut sigterm = tokio::signal::unix::signal(
+                tokio::signal::unix::SignalKind::terminate(),
+            )
+            .expect("install SIGTERM handler");
+            tokio::select! {
+                _ = sigint.recv() => {
+                    let command = if first_stop {
+                        ControlCommand::Cancel
+                    } else {
+                        first_stop = true;
+                        ControlCommand::Stop
+                    };
+                    if tx.send(command).await.is_err() {
+                        break;
+                    }
+                }
+                _ = sigterm.recv() => {
+                    let _ = tx.send(ControlCommand::Cancel).await;
                     break;
                 }
             }
-            chunk = capture.next_chunk() => {
-                let chunk = match chunk {
-                    Ok(chunk) => chunk,
-                    Err(error) => {
-                        let message = format!("capture: {error}");
-                        return fail_stream(&realtime, &options, &mut sequence, &message).await;
-                    }
-                };
-                match chunk {
-                    Some(pcm) => {
-                        if let Err(error) = realtime.send_audio(&pcm).await {
-                            let message = format!("realtime send: {error}");
-                            return fail_stream(&realtime, &options, &mut sequence, &message).await;
-                        }
-                    }
-                    None => {
-                        if session.request_stop() == SessionAction::Finish {
-                            break;
-                        }
-                    }
-                }
-            }
-            event = realtime.next_event() => {
-                let event = match event {
-                    Ok(event) => event,
-                    Err(error) => {
-                        let message = format!("realtime receive: {error}");
-                        return fail_stream(&realtime, &options, &mut sequence, &message).await;
-                    }
-                };
-                let _ = handle_event(&mut session, event, &options, &mut sequence)?;
-                if session.state() == SessionState::Failed {
-                    return finish_failed(&realtime, &options, &mut sequence).await;
-                }
-            }
         }
-    }
-
-    let mut cancel_signal = Box::pin(tokio::signal::ctrl_c());
-    let tail = tokio::select! {
-        signal = &mut cancel_signal => {
-            signal.map_err(|error| StreamError::Capture(format!("cancel signal: {error}")))?;
-            return cancel_stream(&realtime, &options, &mut sequence).await;
-        }
-        result = timeout(CAPTURE_STOP_TIMEOUT, capture.stop()) => {
-            match result {
-                Ok(Ok(tail)) => tail,
-                Ok(Err(error)) => {
-                    let message = format!("capture stop: {error}");
-                    return fail_stream(&realtime, &options, &mut sequence, &message).await;
-                }
-                Err(_) => {
-                    return fail_stream(
-                        &realtime,
-                        &options,
-                        &mut sequence,
-                        "capture stop timed out",
-                    )
-                    .await;
-                }
-            }
-        }
-    };
-
-    if let Some(tail) = tail {
-        let result = tokio::select! {
-            signal = &mut cancel_signal => {
-                signal.map_err(|error| StreamError::Capture(format!("cancel signal: {error}")))?;
-                return cancel_stream(&realtime, &options, &mut sequence).await;
-            }
-            result = timeout(CAPTURE_STOP_TIMEOUT, realtime.send_audio(&tail)) => result,
-        };
-        match result {
-            Ok(Ok(())) => {}
-            Ok(Err(error)) => {
-                let message = format!("realtime tail send: {error}");
-                return fail_stream(&realtime, &options, &mut sequence, &message).await;
-            }
-            Err(_) => {
-                return fail_stream(
-                    &realtime,
-                    &options,
-                    &mut sequence,
-                    "realtime tail send timed out",
-                )
-                .await;
-            }
-        }
-    }
-
-    let finish_deadline = tokio::time::Instant::now() + FINISH_TIMEOUT;
-    let finish_result = tokio::select! {
-        signal = &mut cancel_signal => {
-            signal.map_err(|error| StreamError::Capture(format!("cancel signal: {error}")))?;
-            return cancel_stream(&realtime, &options, &mut sequence).await;
-        }
-        result = timeout_at(finish_deadline, realtime.finish()) => result,
-    };
-    match finish_result {
-        Ok(Ok(())) => {}
-        Ok(Err(error)) => {
-            let message = format!("realtime finish: {error}");
-            return fail_stream(&realtime, &options, &mut sequence, &message).await;
-        }
-        Err(_) => {
-            return fail_stream(
-                &realtime,
-                &options,
-                &mut sequence,
-                "realtime finish timed out",
-            )
-            .await;
-        }
-    }
-
-    loop {
-        let event = tokio::select! {
-            signal = &mut cancel_signal => {
-                signal.map_err(|error| StreamError::Capture(format!("cancel signal: {error}")))?;
-                return cancel_stream(&realtime, &options, &mut sequence).await;
-            }
-            result = timeout_at(finish_deadline, realtime.next_event()) => {
-                match result {
-                    Ok(Ok(event)) => event,
-                    Ok(Err(error)) => {
-                        let message = format!("realtime final receive: {error}");
-                        return fail_stream(&realtime, &options, &mut sequence, &message).await;
-                    }
-                    Err(_) => {
-                        return fail_stream(
-                            &realtime,
-                            &options,
-                            &mut sequence,
-                            "realtime final event timed out",
-                        )
-                        .await;
-                    }
-                }
-            }
-        };
-        let _ = handle_event(&mut session, event, &options, &mut sequence)?;
-        if session.state() == SessionState::Failed {
-            return finish_failed(&realtime, &options, &mut sequence).await;
-        }
-        if session.state() == SessionState::Completed {
-            break;
-        }
-    }
-
-    finalize_session(&mut session, &options, &mut sequence).await
+    });
+    rx
 }
 
-async fn cancel_local(options: &StreamOptions, sequence: &mut u64) -> Result<i32, StreamError> {
-    emit(options, sequence, "cancelled", None, None, None)?;
-    emit(options, sequence, "completed", None, None, None)?;
-    Ok(130)
+/// pw-record capture adapted to the coordinator boundary. Construction is
+/// deferred to `start` so the ready gate can fail before any capture exists.
+#[derive(Default)]
+struct PwCapture {
+    inner: Option<RawCapture>,
 }
 
-async fn fail_local(
-    options: &StreamOptions,
+impl AudioCapture for PwCapture {
+    async fn start(&mut self) -> io::Result<()> {
+        let capture = RawCapture::start()?;
+        self.inner = Some(capture);
+        Ok(())
+    }
+
+    async fn next_chunk(&mut self) -> io::Result<Option<Vec<u8>>> {
+        match &mut self.inner {
+            Some(capture) => capture.next_chunk().await,
+            None => Err(io::Error::new(
+                io::ErrorKind::NotConnected,
+                "capture not started",
+            )),
+        }
+    }
+
+    async fn stop_capture(&mut self) -> io::Result<Option<Vec<u8>>> {
+        match &mut self.inner {
+            Some(capture) => capture.stop().await,
+            None => Ok(None),
+        }
+    }
+
+    fn abort(&mut self) {
+        // Dropping the child kills it (kill_on_drop) without draining.
+        self.inner = None;
+    }
+}
+
+struct CloudTransport(RealtimeSession);
+
+impl BackendTransport for CloudTransport {
+    async fn send_audio(&self, pcm: &[u8]) -> io::Result<()> {
+        self.0.send_audio(pcm).await
+    }
+
+    async fn next_event(&self) -> io::Result<RealtimeEvent> {
+        self.0.next_event().await
+    }
+
+    async fn finish(&mut self) -> io::Result<()> {
+        self.0.finish().await
+    }
+
+    async fn cancel(&mut self) -> io::Result<()> {
+        self.0.cancel().await
+    }
+}
+
+/// Local streaming backend exposed through the same event boundary. The
+/// recognizer is synchronous; it reports Ready immediately and drains
+/// decoded events before each await.
+struct LocalTransport {
+    state: parking_lot::Mutex<LocalTransportState>,
+}
+
+struct LocalTransportState {
+    recognizer: crate::local_asr::LocalStreamingRecognizer,
+    pending: std::collections::VecDeque<io::Result<RealtimeEvent>>,
+    ready_sent: bool,
+    finished: bool,
+}
+
+impl LocalTransport {
+    fn new(recognizer: crate::local_asr::LocalStreamingRecognizer) -> Self {
+        Self {
+            state: parking_lot::Mutex::new(LocalTransportState {
+                recognizer,
+                pending: std::collections::VecDeque::new(),
+                ready_sent: false,
+                finished: false,
+            }),
+        }
+    }
+}
+
+impl BackendTransport for LocalTransport {
+    async fn send_audio(&self, pcm: &[u8]) -> io::Result<()> {
+        let mut state = self.state.lock();
+        if state.finished {
+            return Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "local session already finished",
+            ));
+        }
+        match state.recognizer.accept_pcm(pcm) {
+            Ok(events) => {
+                for event in events {
+                    state.pending.push_back(Ok(event));
+                }
+                Ok(())
+            }
+            Err(error) => Err(io::Error::new(io::ErrorKind::InvalidData, error.to_string())),
+        }
+    }
+
+    async fn next_event(&self) -> io::Result<RealtimeEvent> {
+        loop {
+            {
+                let mut state = self.state.lock();
+                if !state.ready_sent {
+                    state.ready_sent = true;
+                    return Ok(RealtimeEvent::Ready);
+                }
+                if let Some(event) = state.pending.pop_front() {
+                    return event;
+                }
+                if state.finished {
+                    return Err(io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        "local session drained",
+                    ));
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    }
+
+    async fn finish(&mut self) -> io::Result<()> {
+        let mut state = self.state.lock();
+        if state.finished {
+            return Ok(());
+        }
+        state.finished = true;
+        match state.recognizer.finish() {
+            Ok(events) => {
+                for event in events {
+                    state.pending.push_back(Ok(event));
+                }
+                Ok(())
+            }
+            Err(error) => Err(io::Error::new(io::ErrorKind::Other, error.to_string())),
+        }
+    }
+
+    async fn cancel(&mut self) -> io::Result<()> {
+        self.state.lock().finished = true;
+        Ok(())
+    }
+}
+
+struct StdoutSink {
+    json: bool,
     sequence: u64,
-    message: &str,
-) -> Result<i32, StreamError> {
-    let mut sequence = sequence;
-    emit(options, &mut sequence, "error", None, Some(message), None)?;
-    emit(options, &mut sequence, "completed", None, None, None)?;
-    Ok(1)
 }
 
-async fn finalize_session(
-    session: &mut RecognitionSession,
-    options: &StreamOptions,
-    sequence: &mut u64,
-) -> Result<i32, StreamError> {
-    if let Some(text) = session.take_injection_text() {
-        let injection = if options.inject {
-            Some(inject_text(&text).await?)
-        } else {
-            None
-        };
-        emit(
-            options,
-            sequence,
-            "finalized",
-            None,
-            None,
-            injection.as_ref(),
-        )?;
-    }
-    emit(options, sequence, "completed", None, None, None)?;
-    Ok(0)
-}
-
-async fn cancel_stream(
-    realtime: &RealtimeSession,
-    options: &StreamOptions,
-    sequence: &mut u64,
-) -> Result<i32, StreamError> {
-    let _ = realtime.cancel().await;
-    emit(options, sequence, "cancelled", None, None, None)?;
-    emit(options, sequence, "completed", None, None, None)?;
-    Ok(130)
-}
-
-async fn fail_stream(
-    realtime: &RealtimeSession,
-    options: &StreamOptions,
-    sequence: &mut u64,
-    message: &str,
-) -> Result<i32, StreamError> {
-    let _ = realtime.cancel().await;
-    emit(options, sequence, "error", None, Some(message), None)?;
-    emit(options, sequence, "completed", None, None, None)?;
-    Ok(1)
-}
-
-async fn finish_failed(
-    realtime: &RealtimeSession,
-    options: &StreamOptions,
-    sequence: &mut u64,
-) -> Result<i32, StreamError> {
-    let _ = realtime.cancel().await;
-    emit(options, sequence, "completed", None, None, None)?;
-    Ok(1)
-}
-
-fn handle_event(
-    session: &mut RecognitionSession,
-    event: RealtimeEvent,
-    options: &StreamOptions,
-    sequence: &mut u64,
-) -> Result<bool, StreamError> {
-    let update = session.apply(event);
-    match update {
-        SessionUpdate::Transcript(snapshot) => {
-            emit(options, sequence, "transcript", Some(&snapshot), None, None)?;
-            Ok(false)
-        }
-        SessionUpdate::Final(snapshot) => {
-            emit(options, sequence, "transcript", Some(&snapshot), None, None)?;
-            Ok(true)
-        }
-        SessionUpdate::Error(message) => {
-            emit(options, sequence, "error", None, Some(&message), None)?;
-            Ok(true)
-        }
-        SessionUpdate::Ignored => Ok(false),
+impl StdoutSink {
+    fn new(json: bool) -> Self {
+        Self { json, sequence: 0 }
     }
 }
 
-fn emit(
-    options: &StreamOptions,
-    sequence: &mut u64,
-    kind: &str,
-    transcript: Option<&TranscriptSnapshot>,
-    message: Option<&str>,
-    injection: Option<&InjectionResult>,
-) -> Result<(), StreamError> {
-    *sequence += 1;
-    if options.json {
-        let event = JsonEvent {
-            kind,
-            sequence: *sequence,
-            transcript,
-            message,
-            injection,
-        };
-        println!(
-            "{}",
-            serde_json::to_string(&event)
-                .map_err(|error| StreamError::Capture(error.to_string()))?
-        );
-    } else if kind == "transcript" {
-        if let Some(snapshot) = transcript {
-            if snapshot.is_final {
-                println!("{}", snapshot.authoritative_text);
-            } else {
-                eprint!("\r{}", snapshot.authoritative_text);
-                io::stderr().flush().ok();
+impl EventSink for StdoutSink {
+    fn emit(&mut self, event: OutputEvent) -> io::Result<()> {
+        self.sequence += 1;
+        let (kind, transcript, message, injection): (
+            &str,
+            Option<&TranscriptSnapshot>,
+            Option<&str>,
+            Option<&InjectionResult>,
+        ) = match &event {
+            OutputEvent::Ready => ("ready", None, None, None),
+            OutputEvent::Transcript(snapshot) => ("transcript", Some(snapshot), None, None),
+            OutputEvent::Finalized { injection } => {
+                ("finalized", None, None, injection.as_ref())
             }
+            OutputEvent::Warning(message) => ("warning", None, Some(message.as_str()), None),
+            OutputEvent::Error(message) => ("error", None, Some(message.as_str()), None),
+            OutputEvent::Cancelled => ("cancelled", None, None, None),
+            OutputEvent::Completed => ("completed", None, None, None),
+        };
+        if self.json {
+            let payload = JsonEvent {
+                kind,
+                sequence: self.sequence,
+                transcript,
+                message,
+                injection,
+            };
+            println!("{}", serde_json::to_string(&payload)?);
+            return Ok(());
         }
-    } else if kind == "error" {
-        if let Some(message) = message {
-            eprintln!("{message}");
+        match &event {
+            OutputEvent::Transcript(snapshot) => {
+                if snapshot.is_final {
+                    println!("{}", snapshot.authoritative_text);
+                } else {
+                    eprint!("\r{}", snapshot.authoritative_text);
+                    io::stderr().flush().ok();
+                }
+            }
+            OutputEvent::Warning(message) => eprintln!("warning: {message}"),
+            OutputEvent::Error(message) => eprintln!("{message}"),
+            _ => {}
         }
+        Ok(())
     }
-    Ok(())
 }
 
-async fn inject_text(text: &str) -> Result<InjectionResult, StreamError> {
-    let child = Command::new("wtype")
-        .arg("--")
-        .arg(text)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| StreamError::Injection(error.to_string()))?;
-    let output = timeout(Duration::from_secs(1), child.wait_with_output())
-        .await
-        .map_err(|_| StreamError::Injection("wtype timed out".to_owned()))?
-        .map_err(|error| StreamError::Injection(error.to_string()))?;
-    if output.status.success() {
-        Ok(InjectionResult {
-            ok: true,
-            method: "wtype".to_owned(),
-            message: String::new(),
-        })
-    } else {
-        Ok(InjectionResult {
-            ok: false,
-            method: "wtype".to_owned(),
-            message: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
-        })
+struct WtypeInjector;
+
+impl TextInjector for WtypeInjector {
+    async fn inject(&mut self, text: &str) -> InjectionResult {
+        let child = Command::new("wtype")
+            .arg("--")
+            .arg(text)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn();
+        let child = match child {
+            Ok(child) => child,
+            Err(error) => return wtype_result(false, &error.to_string()),
+        };
+        match timeout(Duration::from_secs(1), child.wait_with_output()).await {
+            Ok(Ok(output)) if output.status.success() => wtype_result(true, ""),
+            Ok(Ok(output)) => wtype_result(
+                false,
+                &String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+            ),
+            Ok(Err(error)) => wtype_result(false, &error.to_string()),
+            Err(_) => wtype_result(false, "wtype timed out"),
+        }
     }
+}
+
+fn wtype_result(ok: bool, message: &str) -> InjectionResult {
+    InjectionResult {
+        ok,
+        method: "wtype".to_owned(),
+        message: message.to_owned(),
+    }
+}
+
+/// Processing is not wired in this build: quick mode passes text through and
+/// other modes receive a processing failure warning that keeps the
+/// recognized text, matching the coordinator contract.
+struct NoopProcessor;
+
+impl TextProcessor for NoopProcessor {
+    async fn process(&mut self, _mode_id: &str, _text: &str) -> Result<String, String> {
+        Err("no text processing provider configured".to_owned())
+    }
+}
+
+struct DiscardHistory;
+
+impl HistoryRecorder for DiscardHistory {
+    fn record(&mut self, _entry: HistoryEntry) {}
 }

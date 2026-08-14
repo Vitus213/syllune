@@ -1,3 +1,4 @@
+#![allow(async_fn_in_trait)]
 //! Single owner of one recognition session: capture lifecycle, backend
 //! transport, transcript accumulation and the one-shot final injection.
 //!

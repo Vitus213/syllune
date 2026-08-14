@@ -23,7 +23,7 @@ enum Command {
 
 pub struct RealtimeSession {
     commands: mpsc::Sender<Command>,
-    events: mpsc::Receiver<io::Result<RealtimeEvent>>,
+    events: tokio::sync::Mutex<mpsc::Receiver<io::Result<RealtimeEvent>>>,
     finish_sent: bool,
 }
 
@@ -119,7 +119,7 @@ impl RealtimeSession {
 
         let session = Self {
             commands: command_tx,
-            events: event_rx,
+            events: tokio::sync::Mutex::new(event_rx),
             finish_sent: false,
         };
         session
@@ -150,8 +150,8 @@ impl RealtimeSession {
         .await
     }
 
-    pub async fn next_event(&mut self) -> io::Result<RealtimeEvent> {
-        self.events.recv().await.ok_or_else(|| {
+    pub async fn next_event(&self) -> io::Result<RealtimeEvent> {
+        self.events.lock().await.recv().await.ok_or_else(|| {
             io::Error::new(io::ErrorKind::UnexpectedEof, "realtime event task closed")
         })?
     }

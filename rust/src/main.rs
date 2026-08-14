@@ -35,6 +35,8 @@ struct StreamArgs {
     json: bool,
     #[arg(long)]
     no_inject: bool,
+    #[arg(long, default_value = "quick")]
+    mode: String,
 }
 
 #[tokio::main]
@@ -46,6 +48,7 @@ async fn main() {
             backend: args.backend,
             json: args.json,
             inject: !args.no_inject,
+            mode: args.mode,
         })
         .await
         {
