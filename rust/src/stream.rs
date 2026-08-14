@@ -94,6 +94,9 @@ async fn run_cloud(config: AppConfig, options: StreamOptions) -> Result<i32, Str
 }
 
 async fn run_local(config: AppConfig, options: StreamOptions) -> Result<i32, StreamError> {
+    // Config-level validation (mode, processing) precedes model resolution:
+    // invalid configuration must fail before touching the model store.
+    let pipeline = build_pipeline(&config, &options)?;
     let model_dir = match config.asr.local_model_dir.clone() {
         Some(path) => path,
         None => match resolve_managed_model(&options) {
@@ -101,7 +104,6 @@ async fn run_local(config: AppConfig, options: StreamOptions) -> Result<i32, Str
             Err(code) => return Ok(code),
         },
     };
-    let pipeline = build_pipeline(&config, &options)?;
     let recognizer = match crate::local_asr::LocalStreamingRecognizer::new(&model_dir) {
         Ok(recognizer) => recognizer,
         Err(error) => {

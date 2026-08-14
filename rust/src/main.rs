@@ -66,7 +66,7 @@ struct RecordArgs {
 struct ModelArgs {
     #[command(subcommand)]
     action: ModelAction,
-    #[arg(long)]
+    #[arg(long, global = true)]
     json: bool,
 }
 
@@ -91,7 +91,6 @@ struct ModeArgs {
     #[arg(long, global = true)]
     processing_label: Option<String>,
 }
-
 #[derive(Debug, Subcommand)]
 enum ModeAction {
     List,
@@ -216,7 +215,20 @@ async fn main() {
         }
         Command::Doctor => {
             println!("Syllune doctor");
-            0
+            let checks = syllune::doctor::run_checks();
+            let mut all_ok = true;
+            for check in &checks {
+                if !check.pass() {
+                    all_ok = false;
+                }
+                println!(
+                    "{} {}: {}",
+                    if check.pass() { "ok" } else { "FAIL" },
+                    check.name,
+                    check.detail
+                );
+            }
+            i32::from(!all_ok)
         }
         other => {
             eprintln!("Syllune: {other:?} is not available in this build");
