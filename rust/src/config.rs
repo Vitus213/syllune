@@ -28,6 +28,9 @@ pub enum ConfigError {
 pub struct AppConfig {
     pub asr: AsrConfig,
     pub cloud: CloudConfig,
+    pub inject: InjectConfig,
+    pub processing: ProcessingConfig,
+    pub history: HistoryConfig,
 }
 
 impl Default for AppConfig {
@@ -35,6 +38,9 @@ impl Default for AppConfig {
         Self {
             asr: AsrConfig::default(),
             cloud: CloudConfig::default(),
+            inject: InjectConfig::default(),
+            processing: ProcessingConfig::default(),
+            history: HistoryConfig::default(),
         }
     }
 }
@@ -72,6 +78,62 @@ impl Default for CloudConfig {
             realtime_endpoint: DEFAULT_REALTIME_ENDPOINT.to_owned(),
             realtime_model: DEFAULT_REALTIME_MODEL.to_owned(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct InjectConfig {
+    pub prefer: String,
+    pub wtype_command: String,
+    pub wl_copy_command: String,
+    pub clipboard_fallback: bool,
+    pub timeout_seconds: f64,
+}
+
+impl Default for InjectConfig {
+    fn default() -> Self {
+        Self {
+            prefer: "wtype".to_owned(),
+            wtype_command: "wtype".to_owned(),
+            wl_copy_command: "wl-copy".to_owned(),
+            clipboard_fallback: true,
+            timeout_seconds: 10.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ProcessingConfig {
+    pub provider: String,
+    pub base_url: String,
+    pub model: String,
+    pub api_key_env: String,
+    pub timeout_seconds: f64,
+}
+
+impl Default for ProcessingConfig {
+    fn default() -> Self {
+        Self {
+            provider: "none".to_owned(),
+            base_url: String::new(),
+            model: String::new(),
+            api_key_env: String::new(),
+            timeout_seconds: 30.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct HistoryConfig {
+    pub enabled: bool,
+}
+
+impl Default for HistoryConfig {
+    fn default() -> Self {
+        Self { enabled: true }
     }
 }
 
