@@ -30,6 +30,7 @@ getrandom = "0.2"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 time = { version = "0.3.55", features = ["formatting", "parsing"] }
 zbus = "5.19.0"
+unicode-normalization = "0.1.25"
 
 [dev-dependencies]
 parking_lot = "0.12"

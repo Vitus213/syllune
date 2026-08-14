@@ -25,6 +25,26 @@ enum Command {
     Mode(ModeArgs),
     History(HistoryArgs),
     Daemon,
+    Benchmark(BenchmarkArgs),
+}
+
+#[derive(Debug, Args)]
+struct BenchmarkArgs {
+    #[command(subcommand)]
+    action: BenchmarkAction,
+}
+
+#[derive(Debug, Subcommand)]
+enum BenchmarkAction {
+    Asr {
+        #[arg(long, default_value = "test")]
+        split: String,
+        #[arg(long, default_value = "cloud-realtime")]
+        backend: String,
+        #[arg(long)]
+        enforce: bool,
+    },
+    Latency,
 }
 
 #[derive(Debug, Args)]
@@ -246,10 +266,22 @@ async fn main() {
                 }
             }
         }
-        other => {
-            eprintln!("Syllune: {other:?} is not available in this build");
-            2
-        }
+        Command::Benchmark(args) => match args.action {
+            BenchmarkAction::Asr {
+                split,
+                backend,
+                enforce,
+            } => {
+                let mut bench_args =
+                    syllune::benchmark_cmd::AsrBenchmarkArgs::new(split, backend);
+                bench_args.enforce = enforce;
+                syllune::benchmark_cmd::run_asr(bench_args).await
+            }
+            BenchmarkAction::Latency => {
+                eprintln!("Syllune: benchmark latency is not wired in this build");
+                2
+            }
+        },
     };
     std::process::exit(code);
 }

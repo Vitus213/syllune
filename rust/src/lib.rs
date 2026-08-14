@@ -1,6 +1,8 @@
 pub mod capture;
-pub mod batch_cmd;
 pub mod batch;
+pub mod benchmark;
+pub mod benchmark_cmd;
+pub mod batch_cmd;
 pub mod config;
 pub mod doctor;
 pub mod daemon;
