@@ -20,7 +20,7 @@ enum Command {
     Stream(StreamArgs),
     Transcribe,
     Record,
-    Model,
+    Model(ModelArgs),
     Doctor,
     Mode,
     History,
@@ -37,6 +37,22 @@ struct StreamArgs {
     no_inject: bool,
     #[arg(long, default_value = "quick")]
     mode: String,
+}
+
+#[derive(Debug, Args)]
+struct ModelArgs {
+    #[command(subcommand)]
+    action: ModelAction,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Subcommand)]
+enum ModelAction {
+    List,
+    Install { id: String },
+    Check { id: String },
+    Remove { id: String },
 }
 
 #[tokio::main]
@@ -58,6 +74,17 @@ async fn main() {
                 1
             }
         },
+        Command::Model(args) => syllune::model_cmd::run(
+            match args.action {
+                ModelAction::List => syllune::model_cmd::ModelCommand::List,
+                ModelAction::Install { id } => {
+                    syllune::model_cmd::ModelCommand::Install { id }
+                }
+                ModelAction::Check { id } => syllune::model_cmd::ModelCommand::Check { id },
+                ModelAction::Remove { id } => syllune::model_cmd::ModelCommand::Remove { id },
+            },
+            args.json,
+        ),
         Command::Doctor => {
             println!("Syllune doctor");
             0

@@ -95,15 +95,10 @@ async fn run_cloud(config: AppConfig, options: StreamOptions) -> Result<i32, Str
 async fn run_local(config: AppConfig, options: StreamOptions) -> Result<i32, StreamError> {
     let model_dir = match config.asr.local_model_dir {
         Some(path) => path,
-        None => {
-            let mut sink = StdoutSink::new(options.json);
-            let _ = sink.emit(OutputEvent::Error(
-                "local-streaming requires asr.local_model_dir for an installed online model"
-                    .to_owned(),
-            ));
-            let _ = sink.emit(OutputEvent::Completed);
-            return Ok(1);
-        }
+        None => match resolve_managed_model(&options) {
+            Ok(path) => path,
+            Err(code) => return Ok(code),
+        },
     };
     let recognizer = match crate::local_asr::LocalStreamingRecognizer::new(&model_dir) {
         Ok(recognizer) => recognizer,
@@ -127,6 +122,51 @@ async fn run_local(config: AppConfig, options: StreamOptions) -> Result<i32, Str
     )
     .await;
     Ok(code)
+}
+
+/// Resolve the managed streaming model freshly through the pointer and
+/// re-verify its payload; a corrupted install is never reused.
+fn resolve_managed_model(options: &StreamOptions) -> Result<std::path::PathBuf, i32> {
+    let spec = crate::models::streaming_paraformer_spec();
+    let manager = crate::models::ModelManager::new(
+        &crate::models::default_data_dir(),
+        &crate::models::default_cache_dir(),
+    );
+    let mut sink = StdoutSink::new(options.json);
+    match manager.resolve(&spec.id) {
+        Ok(Some(_payload)) => {}
+        Ok(None) => {
+            let _ = sink.emit(OutputEvent::Error(format!(
+                "local-streaming has no installed model; run `syllune model install {}`",
+                spec.id
+            )));
+            let _ = sink.emit(OutputEvent::Completed);
+            return Err(1);
+        }
+        Err(error) => {
+            let _ = sink.emit(OutputEvent::Error(error.to_string()));
+            let _ = sink.emit(OutputEvent::Completed);
+            return Err(1);
+        }
+    };
+    match manager.check(&spec) {
+        Ok((path, report)) if report.ok() => Ok(path),
+        Ok((_, report)) => {
+            let _ = sink.emit(OutputEvent::Error(format!(
+                "local-streaming model is corrupted: {} missing, {} corrupt, {} extra; reinstall it",
+                report.missing.len(),
+                report.corrupt.len(),
+                report.extra.len()
+            )));
+            let _ = sink.emit(OutputEvent::Completed);
+            Err(1)
+        }
+        Err(error) => {
+            let _ = sink.emit(OutputEvent::Error(error.to_string()));
+            let _ = sink.emit(OutputEvent::Completed);
+            Err(1)
+        }
+    }
 }
 
 fn session_plan(options: &StreamOptions, backend: &str) -> SessionPlan {
