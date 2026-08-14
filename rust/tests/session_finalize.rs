@@ -109,24 +109,21 @@ async fn run_cloud_fixture(
 async fn stop_delivers_tail_and_finish_before_single_final_and_injection() {
     let log = new_log();
     let mut transport = ScriptedTransport::new(log.clone());
-    transport.before_finish.push_back(Ok(RealtimeEvent::Ready));
+    transport.before_finish(Ok(RealtimeEvent::Ready));
     transport
-        .before_finish
-        .push_back(Ok(RealtimeEvent::Partial {
+        .before_finish(Ok(RealtimeEvent::Partial {
             text: "你好".to_owned(),
             stash: "世界".to_owned(),
         }));
     transport
-        .before_finish
-        .push_back(Ok(RealtimeEvent::Completed {
+        .before_finish(Ok(RealtimeEvent::Completed {
             transcript: "你好世界".to_owned(),
         }));
     transport
-        .after_finish
-        .push_back(Ok(RealtimeEvent::Finished {
+        .after_finish(Ok(RealtimeEvent::Finished {
             transcript: "你好世界".to_owned(),
         }));
-    transport.triggers.push((1, ControlCommand::Stop));
+    transport.trigger(1, ControlCommand::Stop);
 
     let capture = FakeCapture::new(log.clone(), vec![vec![1; 1024]], Some(vec![2; 512]));
     let plan = SessionPlan::new("cloud-realtime", true);
@@ -191,10 +188,9 @@ async fn stop_delivers_tail_and_finish_before_single_final_and_injection() {
 async fn stop_without_speech_completes_without_injection_and_is_diagnosable() {
     let log = new_log();
     let mut transport = ScriptedTransport::new(log.clone());
-    transport.before_finish.push_back(Ok(RealtimeEvent::Ready));
+    transport.before_finish(Ok(RealtimeEvent::Ready));
     transport
-        .after_finish
-        .push_back(Ok(RealtimeEvent::Finished {
+        .after_finish(Ok(RealtimeEvent::Finished {
             transcript: String::new(),
         }));
     let capture = FakeCapture::new(log.clone(), vec![vec![0; 1024]], None);

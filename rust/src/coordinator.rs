@@ -1,17 +1,21 @@
 //! Single owner of one recognition session: capture lifecycle, backend
 //! transport, transcript accumulation and the one-shot final injection.
 //!
-//! The coordinator enforces the fixed stop order (capture stop -> tail
-//! delivery -> backend finish -> final event -> optional single injection)
-//! and guarantees that cancel/error paths never inject partial text.
+//! The coordinator enforces the fixed stop order (stop accepting chunks ->
+//! capture stop -> FIFO drain of queued chunks and the tail frame -> single
+//! backend finish -> final event -> optional single injection) and
+//! guarantees that cancel/error paths never inject partial text. Audio
+//! backlog is bounded: queue overrun or a send deadline breach fails the
+//! session instead of dropping or reordering audio.
 
+use std::collections::VecDeque;
 use std::future::Future;
 use std::io;
 use std::time::Duration;
 
 use serde::Serialize;
 use tokio::sync::mpsc;
-use tokio::time::timeout_at;
+use tokio::time::{timeout, timeout_at};
 
 use crate::realtime::RealtimeEvent;
 use crate::session::{
@@ -81,10 +85,11 @@ pub trait AudioCapture {
 }
 
 /// Realtime backend boundary. Events follow the same semantics for cloud and
-/// local backends (`RealtimeEvent`).
+/// local backends (`RealtimeEvent`). `send_audio` and `next_event` share the
+/// session concurrently; `finish` and `cancel` terminate it.
 pub trait BackendTransport {
-    async fn send_audio(&mut self, pcm: &[u8]) -> io::Result<()>;
-    async fn next_event(&mut self) -> io::Result<RealtimeEvent>;
+    async fn send_audio(&self, pcm: &[u8]) -> io::Result<()>;
+    async fn next_event(&self) -> io::Result<RealtimeEvent>;
     async fn finish(&mut self) -> io::Result<()>;
     async fn cancel(&mut self) -> io::Result<()>;
 }
@@ -99,13 +104,13 @@ pub trait EventSink {
 
 /// Control input wrapper: a closed channel stops delivering commands but is
 /// never treated as a cancellation itself.
-pub struct ControlInput {
+struct ControlInput {
     receiver: mpsc::Receiver<ControlCommand>,
     closed: bool,
 }
 
 impl ControlInput {
-    pub fn new(receiver: mpsc::Receiver<ControlCommand>) -> Self {
+    fn new(receiver: mpsc::Receiver<ControlCommand>) -> Self {
         Self {
             receiver,
             closed: false,
@@ -138,6 +143,8 @@ where
     let mut control = ControlInput::new(control);
     let mut session = RecognitionSession::new(plan.backend.clone());
 
+    // Ready gate: capture never starts before the backend is ready, so
+    // auth/connect failures exit before any audio is produced.
     let ready_deadline = tokio::time::Instant::now() + plan.ready_timeout;
     loop {
         tokio::select! {
@@ -173,6 +180,8 @@ where
         return 1;
     }
 
+    let mut queue: VecDeque<Vec<u8>> = VecDeque::new();
+
     loop {
         tokio::select! {
             biased;
@@ -195,22 +204,10 @@ where
             }
             chunk = capture.next_chunk() => match chunk {
                 Ok(Some(pcm)) => {
-                    let send_deadline = tokio::time::Instant::now() + plan.send_deadline;
-                    match timed_step(&mut control, send_deadline, transport.send_audio(&pcm))
-                        .await
-                    {
-                        Step::Value(Ok(())) => {}
-                        Step::Value(Err(error)) => {
-                            return fail(sink, &format!("audio send: {error}"))
-                        }
-                        Step::TimedOut => return fail(sink, "audio send exceeded the deadline"),
-                        Step::Command(command) => {
-                            return handle_flush_command(
-                                command, &mut session, &mut capture, &mut transport, sink,
-                            )
-                            .await
-                        }
+                    if queue.len() >= plan.queue_capacity {
+                        return overrun(&mut capture, &mut transport, sink).await;
                     }
+                    queue.push_back(pcm);
                 }
                 Ok(None) => {
                     if session.state() == SessionState::Recording {
@@ -220,6 +217,19 @@ where
                 }
                 Err(error) => return fail(sink, &format!("capture: {error}")),
             },
+            send = timeout(plan.send_deadline, transport.send_audio(queue.front().map(Vec::as_slice).unwrap_or(&[]))), if !queue.is_empty() => {
+                match send {
+                    Ok(Ok(())) => {
+                        queue.pop_front();
+                    }
+                    Ok(Err(error)) => {
+                        return send_failed(&mut capture, &mut transport, sink, &format!("audio send: {error}")).await
+                    }
+                    Err(_) => {
+                        return send_failed(&mut capture, &mut transport, sink, "audio send exceeded the deadline").await
+                    }
+                }
+            }
             event = transport.next_event() => match event {
                 Ok(event) => {
                     if let Err(code) = dispatch_event(&mut session, sink, event) {
@@ -236,6 +246,8 @@ where
         }
     }
 
+    // Stop flush: graceful capture stop, then FIFO drain of the queue and
+    // the tail frame, then exactly one finish, then final events.
     let stop_deadline = tokio::time::Instant::now() + plan.finish_timeout;
     let tail = match timed_step(&mut control, stop_deadline, capture.stop_capture()).await {
         Step::Value(Ok(tail)) => tail,
@@ -249,10 +261,23 @@ where
         }
     };
     if let Some(tail) = tail {
-        match timed_step(&mut control, stop_deadline, transport.send_audio(&tail)).await {
+        if tail.len() % 2 != 0 {
+            capture.abort();
+            let _ = transport.cancel().await;
+            return fail(
+                sink,
+                &format!("incomplete PCM16 tail frame ({} bytes)", tail.len()),
+            );
+        }
+        if !tail.is_empty() {
+            queue.push_back(tail);
+        }
+    }
+    while let Some(pcm) = queue.pop_front() {
+        match timed_step(&mut control, stop_deadline, transport.send_audio(&pcm)).await {
             Step::Value(Ok(())) => {}
-            Step::Value(Err(error)) => return fail(sink, &format!("tail send: {error}")),
-            Step::TimedOut => return fail(sink, "tail send timed out"),
+            Step::Value(Err(error)) => return fail(sink, &format!("flush send: {error}")),
+            Step::TimedOut => return fail(sink, "flush send timed out"),
             Step::Command(command) => {
                 return handle_flush_command(
                     command, &mut session, &mut capture, &mut transport, sink,
@@ -337,6 +362,28 @@ where
     let _ = command;
     let _ = session.request_stop();
     cancel_path(capture, transport, sink).await
+}
+
+async fn overrun<C, T, S>(capture: &mut C, transport: &mut T, sink: &mut S) -> i32
+where
+    C: AudioCapture,
+    T: BackendTransport,
+    S: EventSink,
+{
+    capture.abort();
+    let _ = transport.cancel().await;
+    fail(sink, "audio backlog exceeded the bounded queue capacity")
+}
+
+async fn send_failed<C, T, S>(capture: &mut C, transport: &mut T, sink: &mut S, message: &str) -> i32
+where
+    C: AudioCapture,
+    T: BackendTransport,
+    S: EventSink,
+{
+    capture.abort();
+    let _ = transport.cancel().await;
+    fail(sink, message)
 }
 
 async fn timed_step<F, T>(

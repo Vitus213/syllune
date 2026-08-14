@@ -5,7 +5,7 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::{Child, ChildStdout, Command};
 
 pub const SAMPLE_RATE: u32 = 16_000;
-const CHUNK_BYTES: usize = 1_024;
+pub const CHUNK_BYTES: usize = 1_024;
 
 pub struct RawCapture {
     child: Child,

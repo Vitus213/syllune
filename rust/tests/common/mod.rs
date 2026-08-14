@@ -53,6 +53,7 @@ pub struct FakeCapture {
     pub eof_on_empty: bool,
     pub start_error: Option<String>,
     pub stop_error: Option<String>,
+    pub chunk_interval: Duration,
 }
 
 impl FakeCapture {
@@ -64,6 +65,7 @@ impl FakeCapture {
             eof_on_empty: false,
             start_error: None,
             stop_error: None,
+            chunk_interval: Duration::ZERO,
         }
     }
 }
@@ -78,6 +80,9 @@ impl AudioCapture for FakeCapture {
     }
 
     async fn next_chunk(&mut self) -> io::Result<Option<Vec<u8>>> {
+        if self.chunk_interval > Duration::ZERO {
+            tokio::time::sleep(self.chunk_interval).await;
+        }
         if let Some(chunk) = self.chunks.pop_front() {
             self.log
                 .lock()
@@ -104,18 +109,21 @@ impl AudioCapture for FakeCapture {
     }
 }
 
+struct TransportState {
+    before_finish: VecDeque<io::Result<RealtimeEvent>>,
+    after_finish: VecDeque<io::Result<RealtimeEvent>>,
+    finished: bool,
+    appends: usize,
+    triggers: Vec<(usize, ControlCommand)>,
+    fail_after_appends: Option<usize>,
+}
+
 pub struct ScriptedTransport {
     pub log: Log,
-    pub before_finish: VecDeque<io::Result<RealtimeEvent>>,
-    pub after_finish: VecDeque<io::Result<RealtimeEvent>>,
-    pub finished: bool,
-    pub appends: usize,
-    /// After the Nth audio append, send the command to the coordinator.
-    pub triggers: Vec<(usize, ControlCommand)>,
+    state: Mutex<TransportState>,
     pub control_tx: Option<mpsc::Sender<ControlCommand>>,
     pub append_delay: Duration,
-    pub finish_error: Option<String>,
-    pub fail_after_appends: Option<usize>,
+    pub finish_error: Mutex<Option<String>>,
     pub hang_on_finish: bool,
 }
 
@@ -123,44 +131,62 @@ impl ScriptedTransport {
     pub fn new(log: Log) -> Self {
         Self {
             log,
-            before_finish: VecDeque::new(),
-            after_finish: VecDeque::new(),
-            finished: false,
-            appends: 0,
-            triggers: Vec::new(),
+            state: Mutex::new(TransportState {
+                before_finish: VecDeque::new(),
+                after_finish: VecDeque::new(),
+                finished: false,
+                appends: 0,
+                triggers: Vec::new(),
+                fail_after_appends: None,
+            }),
             control_tx: None,
             append_delay: Duration::ZERO,
-            finish_error: None,
-            fail_after_appends: None,
+            finish_error: Mutex::new(None),
             hang_on_finish: false,
         }
+    }
+
+    pub fn before_finish(&self, event: io::Result<RealtimeEvent>) {
+        self.state.lock().before_finish.push_back(event);
+    }
+
+    pub fn after_finish(&self, event: io::Result<RealtimeEvent>) {
+        self.state.lock().after_finish.push_back(event);
+    }
+
+    pub fn trigger(&self, at: usize, command: ControlCommand) {
+        self.state.lock().triggers.push((at, command));
     }
 }
 
 impl BackendTransport for ScriptedTransport {
-    async fn send_audio(&mut self, pcm: &[u8]) -> io::Result<()> {
+    async fn send_audio(&self, pcm: &[u8]) -> io::Result<()> {
         if self.append_delay > Duration::ZERO {
             tokio::time::sleep(self.append_delay).await;
         }
-        if self.fail_after_appends == Some(self.appends) {
-            return Err(io::Error::new(
-                io::ErrorKind::ConnectionAborted,
-                "transport send failed",
-            ));
-        }
-        self.log
-            .lock()
-            .push(format!("transport.append:{}", pcm.len()));
-        self.appends += 1;
         let mut fired = Vec::new();
-        self.triggers.retain(|(at, command)| {
-            if *at == self.appends {
-                fired.push(*command);
-                false
-            } else {
-                true
+        {
+            let mut state = self.state.lock();
+            if state.fail_after_appends == Some(state.appends) {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionAborted,
+                    "transport send failed",
+                ));
             }
-        });
+            self.log
+                .lock()
+                .push(format!("transport.append:{}", pcm.len()));
+            state.appends += 1;
+            let appends = state.appends;
+            state.triggers.retain(|(at, command)| {
+                if *at == appends {
+                    fired.push(*command);
+                    false
+                } else {
+                    true
+                }
+            });
+        }
         if let Some(tx) = &self.control_tx {
             for command in fired {
                 let _ = tx.send(command).await;
@@ -169,17 +195,21 @@ impl BackendTransport for ScriptedTransport {
         Ok(())
     }
 
-    async fn next_event(&mut self) -> io::Result<RealtimeEvent> {
-        if let Some(event) = self.before_finish.pop_front() {
-            return event;
-        }
-        if self.finished {
-            if let Some(event) = self.after_finish.pop_front() {
-                return event;
+    async fn next_event(&self) -> io::Result<RealtimeEvent> {
+        loop {
+            {
+                let mut state = self.state.lock();
+                if let Some(event) = state.before_finish.pop_front() {
+                    return event;
+                }
+                if state.finished {
+                    if let Some(event) = state.after_finish.pop_front() {
+                        return event;
+                    }
+                }
             }
+            tokio::time::sleep(Duration::from_millis(2)).await;
         }
-        std::future::pending::<()>().await;
-        unreachable!("pending future resolved")
     }
 
     async fn finish(&mut self) -> io::Result<()> {
@@ -188,10 +218,10 @@ impl BackendTransport for ScriptedTransport {
             std::future::pending::<()>().await;
             unreachable!("pending future resolved")
         }
-        if let Some(message) = self.finish_error.take() {
+        if let Some(message) = self.finish_error.lock().take() {
             return Err(io::Error::new(io::ErrorKind::Other, message));
         }
-        self.finished = true;
+        self.state.lock().finished = true;
         Ok(())
     }
 

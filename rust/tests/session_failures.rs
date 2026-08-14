@@ -53,8 +53,7 @@ async fn auth_failure_before_ready_never_starts_capture_or_injects() {
     let log = new_log();
     let mut transport = ScriptedTransport::new(log.clone());
     transport
-        .before_finish
-        .push_back(Err(std::io::Error::new(
+        .before_finish(Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
             "401 unauthorized",
         )));
@@ -88,8 +87,7 @@ async fn capture_start_failure_reports_error_without_injection() {
     let log = new_log();
     let mut transport = ScriptedTransport::new(log.clone());
     transport
-        .before_finish
-        .push_back(Ok(RealtimeEvent::Ready));
+        .before_finish(Ok(RealtimeEvent::Ready));
     let mut capture = FakeCapture::new(log.clone(), vec![vec![0; 1024]], None);
     capture.start_error = Some("no default audio device".to_owned());
     let plan = SessionPlan::new("cloud-realtime", true);
@@ -114,17 +112,16 @@ async fn capture_start_failure_reports_error_without_injection() {
 async fn second_stop_during_flush_cancels_without_finish_or_injection() {
     let log = new_log();
     let mut transport = ScriptedTransport::new(log.clone());
-    transport.before_finish.push_back(Ok(RealtimeEvent::Ready));
+    transport.before_finish(Ok(RealtimeEvent::Ready));
     transport
-        .before_finish
-        .push_back(Ok(RealtimeEvent::Partial {
+        .before_finish(Ok(RealtimeEvent::Partial {
             text: "你好".to_owned(),
             stash: String::new(),
         }));
     // First stop comes from the test harness; the second stop arrives while
     // the tail frame is being flushed.
-    transport.triggers.push((1, ControlCommand::Stop));
-    transport.triggers.push((2, ControlCommand::Stop));
+    transport.trigger(1, ControlCommand::Stop);
+    transport.trigger(2, ControlCommand::Stop);
     let capture = FakeCapture::new(log.clone(), vec![vec![1; 1024]], Some(vec![2; 512]));
     let plan = SessionPlan::new("cloud-realtime", true);
 
@@ -152,8 +149,8 @@ async fn second_stop_during_flush_cancels_without_finish_or_injection() {
 async fn explicit_cancel_during_flush_cancels_without_injection() {
     let log = new_log();
     let mut transport = ScriptedTransport::new(log.clone());
-    transport.before_finish.push_back(Ok(RealtimeEvent::Ready));
-    transport.triggers.push((1, ControlCommand::Cancel));
+    transport.before_finish(Ok(RealtimeEvent::Ready));
+    transport.trigger(1, ControlCommand::Cancel);
     let capture = FakeCapture::new(log.clone(), vec![vec![1; 1024]], Some(vec![2; 512]));
     let plan = SessionPlan::new("cloud-realtime", true);
 
@@ -179,14 +176,13 @@ async fn explicit_cancel_during_flush_cancels_without_injection() {
 async fn disconnect_after_partial_fails_without_injecting_partial_text() {
     let log = new_log();
     let mut transport = ScriptedTransport::new(log.clone());
-    transport.before_finish.push_back(Ok(RealtimeEvent::Ready));
+    transport.before_finish(Ok(RealtimeEvent::Ready));
     transport
-        .before_finish
-        .push_back(Ok(RealtimeEvent::Partial {
+        .before_finish(Ok(RealtimeEvent::Partial {
             text: "半句".to_owned(),
             stash: String::new(),
         }));
-    transport.before_finish.push_back(Err(std::io::Error::new(
+    transport.before_finish(Err(std::io::Error::new(
         std::io::ErrorKind::ConnectionAborted,
         "websocket closed mid-session",
     )));
@@ -214,8 +210,8 @@ async fn disconnect_after_partial_fails_without_injecting_partial_text() {
 async fn finish_timeout_fails_the_session_without_injection() {
     let log = new_log();
     let mut transport = ScriptedTransport::new(log.clone());
-    transport.before_finish.push_back(Ok(RealtimeEvent::Ready));
-    transport.triggers.push((1, ControlCommand::Stop));
+    transport.before_finish(Ok(RealtimeEvent::Ready));
+    transport.trigger(1, ControlCommand::Stop);
     transport.hang_on_finish = true;
     let capture = FakeCapture::new(log.clone(), vec![vec![1; 1024]], None);
     let mut plan = SessionPlan::new("cloud-realtime", true);
