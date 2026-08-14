@@ -5,7 +5,9 @@
 use std::time::Duration;
 
 use syllune::local_asr::LocalStreamingRecognizer;
-use syllune::models::{default_cache_dir, default_data_dir, streaming_paraformer_spec, ModelManager};
+use syllune::models::{
+    default_cache_dir, default_data_dir, streaming_paraformer_spec, ModelManager,
+};
 use syllune::realtime::RealtimeEvent;
 
 #[test]
@@ -30,8 +32,7 @@ fn real_local_asr_recognizer_processes_and_finishes() {
     // One second of 440 Hz sine at 16 kHz mono PCM16.
     let mut pcm = Vec::with_capacity(32_000);
     for index in 0..16_000 {
-        let sample =
-            (440.0 * 2.0 * std::f64::consts::PI * index as f64 / 16_000.0).sin() * 0.25;
+        let sample = (440.0 * 2.0 * std::f64::consts::PI * index as f64 / 16_000.0).sin() * 0.25;
         let value = (sample * f64::from(i16::MAX)) as i16;
         pcm.extend_from_slice(&value.to_le_bytes());
     }

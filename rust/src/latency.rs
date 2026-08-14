@@ -97,14 +97,16 @@ pub fn evaluate_gate(outcomes: &[TrialOutcome], thresholds: &LatencyThresholds) 
     let first_partials: Vec<f64> = quick_success
         .iter()
         .filter_map(|outcome| {
-            stage_duration(outcome, TrialStage::UtteranceStart, TrialStage::FirstPartial)
+            stage_duration(
+                outcome,
+                TrialStage::UtteranceStart,
+                TrialStage::FirstPartial,
+            )
         })
         .collect();
     let stop_to_finals: Vec<f64> = quick_success
         .iter()
-        .filter_map(|outcome| {
-            stage_duration(outcome, TrialStage::Stop, TrialStage::FinalReceived)
-        })
+        .filter_map(|outcome| stage_duration(outcome, TrialStage::Stop, TrialStage::FinalReceived))
         .collect();
     let stop_to_injects: Vec<f64> = quick_success
         .iter()
@@ -158,4 +160,3 @@ fn optional_percentile(values: &[f64], p: f64) -> Option<f64> {
         Some(percentile(values, p))
     }
 }
-

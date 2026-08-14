@@ -106,5 +106,7 @@ fn remove(manager: &ModelManager, id: &str) -> i32 {
 }
 
 fn find_spec(id: &str) -> Option<crate::models::ModelSpec> {
-    crate::models::catalog().into_iter().find(|spec| spec.id == id)
+    crate::models::catalog()
+        .into_iter()
+        .find(|spec| spec.id == id)
 }

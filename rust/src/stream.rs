@@ -289,14 +289,12 @@ fn control_receiver() -> tokio::sync::mpsc::Receiver<ControlCommand> {
     tokio::spawn(async move {
         let mut first_stop = false;
         loop {
-            let mut sigint = tokio::signal::unix::signal(
-                tokio::signal::unix::SignalKind::interrupt(),
-            )
-            .expect("install SIGINT handler");
-            let mut sigterm = tokio::signal::unix::signal(
-                tokio::signal::unix::SignalKind::terminate(),
-            )
-            .expect("install SIGTERM handler");
+            let mut sigint =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
+                    .expect("install SIGINT handler");
+            let mut sigterm =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .expect("install SIGTERM handler");
             tokio::select! {
                 _ = sigint.recv() => {
                     let command = if first_stop {
@@ -419,7 +417,10 @@ impl BackendTransport for LocalTransport {
                 }
                 Ok(())
             }
-            Err(error) => Err(io::Error::new(io::ErrorKind::InvalidData, error.to_string())),
+            Err(error) => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                error.to_string(),
+            )),
         }
     }
 
@@ -458,7 +459,7 @@ impl BackendTransport for LocalTransport {
                 }
                 Ok(())
             }
-            Err(error) => Err(io::Error::new(io::ErrorKind::Other, error.to_string())),
+            Err(error) => Err(io::Error::other(error.to_string())),
         }
     }
 
@@ -490,9 +491,7 @@ impl EventSink for StdoutSink {
         ) = match &event {
             OutputEvent::Ready => ("ready", None, None, None),
             OutputEvent::Transcript(snapshot) => ("transcript", Some(snapshot), None, None),
-            OutputEvent::Finalized { injection } => {
-                ("finalized", None, None, injection.as_ref())
-            }
+            OutputEvent::Finalized { injection } => ("finalized", None, None, injection.as_ref()),
             OutputEvent::Warning(message) => ("warning", None, Some(message.as_str()), None),
             OutputEvent::Error(message) => ("error", None, Some(message.as_str()), None),
             OutputEvent::Cancelled => ("cancelled", None, None, None),
@@ -551,10 +550,7 @@ pub async fn inject_via_wtype(text: &str) -> InjectionResult {
     };
     match timeout(Duration::from_secs(1), child.wait_with_output()).await {
         Ok(Ok(output)) if output.status.success() => wtype_result(true, ""),
-        Ok(Ok(output)) => wtype_result(
-            false,
-            &String::from_utf8_lossy(&output.stderr).trim().to_owned(),
-        ),
+        Ok(Ok(output)) => wtype_result(false, String::from_utf8_lossy(&output.stderr).trim()),
         Ok(Err(error)) => wtype_result(false, &error.to_string()),
         Err(_) => wtype_result(false, "wtype timed out"),
     }
@@ -567,4 +563,3 @@ fn wtype_result(ok: bool, message: &str) -> InjectionResult {
         message: message.to_owned(),
     }
 }
-

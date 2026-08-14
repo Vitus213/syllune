@@ -79,7 +79,7 @@ fn install_accepts_explicit_directory_entries_in_archives() {
         header.set_mode(0o644);
         header.set_cksum();
         builder
-            .append_data(&mut header, &format!("fixture-model/{name}"), content)
+            .append_data(&mut header, format!("fixture-model/{name}"), content)
             .expect("append member");
     }
     let tar_bytes = builder.into_inner().expect("finish tar");

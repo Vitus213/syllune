@@ -194,9 +194,7 @@ async fn main() {
         Command::Model(args) => syllune::model_cmd::run(
             match args.action {
                 ModelAction::List => syllune::model_cmd::ModelCommand::List,
-                ModelAction::Install { id } => {
-                    syllune::model_cmd::ModelCommand::Install { id }
-                }
+                ModelAction::Install { id } => syllune::model_cmd::ModelCommand::Install { id },
                 ModelAction::Check { id } => syllune::model_cmd::ModelCommand::Check { id },
                 ModelAction::Remove { id } => syllune::model_cmd::ModelCommand::Remove { id },
             },
@@ -279,8 +277,7 @@ async fn main() {
                 backend,
                 enforce,
             } => {
-                let mut bench_args =
-                    syllune::benchmark_cmd::AsrBenchmarkArgs::new(split, backend);
+                let mut bench_args = syllune::benchmark_cmd::AsrBenchmarkArgs::new(split, backend);
                 bench_args.enforce = enforce;
                 syllune::benchmark_cmd::run_asr(bench_args).await
             }

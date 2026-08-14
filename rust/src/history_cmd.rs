@@ -53,7 +53,9 @@ pub fn run(action: &str, args: HistoryArgs) -> i32 {
                 return 1;
             };
             match store.export_csv(destination) {
-                Ok(count) => serde_json::json!({ "exported": count, "path": destination.display().to_string() }),
+                Ok(count) => {
+                    serde_json::json!({ "exported": count, "path": destination.display().to_string() })
+                }
                 Err(error) => {
                     eprintln!("Syllune: {error}");
                     return 1;

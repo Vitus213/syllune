@@ -1,7 +1,7 @@
 //! `syllune mode` subcommands backed by the modes repository.
 
-use crate::modes::ModesRepository;
 use crate::models::default_config_dir;
+use crate::modes::ModesRepository;
 
 pub fn run(action: &str, args: ModeArgs) -> i32 {
     let mut repository = match ModesRepository::open(default_config_dir().join("modes.json")) {
@@ -25,7 +25,11 @@ pub fn run(action: &str, args: ModeArgs) -> i32 {
                 eprintln!("Syllune: mode add requires --name");
                 return 1;
             };
-            match repository.add(name, args.prompt.as_deref().unwrap_or_default(), args.processing_label.as_deref().unwrap_or_default()) {
+            match repository.add(
+                name,
+                args.prompt.as_deref().unwrap_or_default(),
+                args.processing_label.as_deref().unwrap_or_default(),
+            ) {
                 Ok(mode) => serde_json::to_value(&mode).expect("serialize mode"),
                 Err(error) => {
                     eprintln!("Syllune: {error}");

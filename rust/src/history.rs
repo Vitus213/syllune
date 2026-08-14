@@ -124,7 +124,11 @@ impl HistoryStore {
         Ok(())
     }
 
-    pub fn insert(&self, entry: &HistoryEntry, backend: &str) -> Result<HistoryRecord, HistoryError> {
+    pub fn insert(
+        &self,
+        entry: &HistoryEntry,
+        backend: &str,
+    ) -> Result<HistoryRecord, HistoryError> {
         let id = new_record_id();
         let created_at = timestamp_now()?;
         let connection = self.connect()?;
@@ -165,11 +169,7 @@ impl HistoryStore {
         })
     }
 
-    pub fn query(
-        &self,
-        limit: i64,
-        cursor: Option<&str>,
-    ) -> Result<HistoryPage, HistoryError> {
+    pub fn query(&self, limit: i64, cursor: Option<&str>) -> Result<HistoryPage, HistoryError> {
         if !(1..=1_000).contains(&limit) {
             return Err(HistoryError::Database(format!(
                 "page size must be between 1 and 1000, got {limit}"
@@ -213,7 +213,9 @@ impl HistoryStore {
         let has_more = records.len() as i64 > limit;
         records.truncate(limit as usize);
         let next_cursor = if has_more {
-            records.last().map(|last| encode_cursor(&last.created_at, &last.id))
+            records
+                .last()
+                .map(|last| encode_cursor(&last.created_at, &last.id))
         } else {
             None
         };
@@ -277,8 +279,7 @@ impl HistoryStore {
         let connection = self.connect()?;
         let mut providers: std::collections::BTreeMap<String, i64> =
             std::collections::BTreeMap::new();
-        let mut models: std::collections::BTreeMap<String, i64> =
-            std::collections::BTreeMap::new();
+        let mut models: std::collections::BTreeMap<String, i64> = std::collections::BTreeMap::new();
         let mut statement = connection
             .prepare(
                 "SELECT COALESCE(asr_provider, ''), COUNT(*) FROM recognition_history
@@ -286,7 +287,9 @@ impl HistoryStore {
             )
             .map_err(|error| HistoryError::Database(error.to_string()))?;
         let rows = statement
-            .query_map(params![since], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
+            .query_map(params![since], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
             .map_err(|error| HistoryError::Database(error.to_string()))?;
         for row in rows {
             let (key, count) = row.map_err(|error| HistoryError::Database(error.to_string()))?;
@@ -301,7 +304,9 @@ impl HistoryStore {
             )
             .map_err(|error| HistoryError::Database(error.to_string()))?;
         let rows = statement
-            .query_map(params![since], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
+            .query_map(params![since], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
             .map_err(|error| HistoryError::Database(error.to_string()))?;
         for row in rows {
             let (key, count) = row.map_err(|error| HistoryError::Database(error.to_string()))?;
