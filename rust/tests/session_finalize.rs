@@ -117,21 +117,18 @@ async fn run_cloud_fixture(
 #[tokio::test]
 async fn stop_delivers_tail_and_finish_before_single_final_and_injection() {
     let log = new_log();
-    let mut transport = ScriptedTransport::new(log.clone());
+    let transport = ScriptedTransport::new(log.clone());
     transport.before_finish(Ok(RealtimeEvent::Ready));
-    transport
-        .before_finish(Ok(RealtimeEvent::Partial {
-            text: "你好".to_owned(),
-            stash: "世界".to_owned(),
-        }));
-    transport
-        .before_finish(Ok(RealtimeEvent::Completed {
-            transcript: "你好世界".to_owned(),
-        }));
-    transport
-        .after_finish(Ok(RealtimeEvent::Finished {
-            transcript: "你好世界".to_owned(),
-        }));
+    transport.before_finish(Ok(RealtimeEvent::Partial {
+        text: "你好".to_owned(),
+        stash: "世界".to_owned(),
+    }));
+    transport.before_finish(Ok(RealtimeEvent::Completed {
+        transcript: "你好世界".to_owned(),
+    }));
+    transport.after_finish(Ok(RealtimeEvent::Finished {
+        transcript: "你好世界".to_owned(),
+    }));
     transport.trigger(1, ControlCommand::Stop);
 
     let capture = FakeCapture::new(log.clone(), vec![vec![1; 1024]], Some(vec![2; 512]));
@@ -170,7 +167,14 @@ async fn stop_delivers_tail_and_finish_before_single_final_and_injection() {
 
     assert_eq!(
         event_kinds(&events),
-        vec!["ready", "transcript", "transcript", "final", "finalized", "completed"],
+        vec![
+            "ready",
+            "transcript",
+            "transcript",
+            "final",
+            "finalized",
+            "completed"
+        ],
         "{events:?}"
     );
     let finals: Vec<_> = events
@@ -196,12 +200,11 @@ async fn stop_delivers_tail_and_finish_before_single_final_and_injection() {
 #[tokio::test]
 async fn stop_without_speech_completes_without_injection_and_is_diagnosable() {
     let log = new_log();
-    let mut transport = ScriptedTransport::new(log.clone());
+    let transport = ScriptedTransport::new(log.clone());
     transport.before_finish(Ok(RealtimeEvent::Ready));
-    transport
-        .after_finish(Ok(RealtimeEvent::Finished {
-            transcript: String::new(),
-        }));
+    transport.after_finish(Ok(RealtimeEvent::Finished {
+        transcript: String::new(),
+    }));
     let capture = FakeCapture::new(log.clone(), vec![vec![0; 1024]], None);
     let plan = SessionPlan::new("cloud-realtime", true);
 
@@ -243,7 +246,9 @@ async fn stop_without_speech_completes_without_injection_and_is_diagnosable() {
     assert_eq!(finalized, Some(None), "{:?}", sink.events);
     let log_entries = entries(&log);
     assert!(
-        !log_entries.iter().any(|entry| entry.starts_with("injector.inject:")),
+        !log_entries
+            .iter()
+            .any(|entry| entry.starts_with("injector.inject:")),
         "{log_entries:?}"
     );
 }

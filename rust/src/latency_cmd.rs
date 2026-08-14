@@ -3,11 +3,11 @@
 //! sample at the 32 ms pace through `cloud-realtime`, stops normally,
 //! injects the final text via wtype and records stage timestamps.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crate::config::{load_default_config, AppConfig};
-use crate::latency::{LatencyGate, LatencyThresholds, TrialOutcome, TrialStage};
+use crate::latency::{LatencyThresholds, TrialOutcome, TrialStage};
 use crate::realtime::{RealtimeEvent, RealtimeSession};
 use crate::stream::inject_via_wtype;
 
@@ -23,6 +23,12 @@ pub struct LatencyBenchmarkArgs {
     pub audio_dir: PathBuf,
     pub report_path: PathBuf,
     pub enforce: bool,
+}
+
+impl Default for LatencyBenchmarkArgs {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LatencyBenchmarkArgs {
@@ -48,9 +54,7 @@ pub async fn run_latency(args: LatencyBenchmarkArgs) -> i32 {
         return 2;
     }
     if args.mode != "quick" {
-        eprintln!(
-            "Syllune: non-quick modes must not feed the 1s latency gate; use --mode quick"
-        );
+        eprintln!("Syllune: non-quick modes must not feed the 1s latency gate; use --mode quick");
         return 2;
     }
     let config = match load_default_config() {
@@ -146,7 +150,10 @@ pub async fn run_latency(args: LatencyBenchmarkArgs) -> i32 {
         gate.stop_to_inject_p99
     );
     if gate.unverified {
-        eprintln!("Syllune: fewer than {} successful trials; gate unverified", thresholds.min_trials);
+        eprintln!(
+            "Syllune: fewer than {} successful trials; gate unverified",
+            thresholds.min_trials
+        );
         return 2;
     }
     if gate.passed {
@@ -177,11 +184,11 @@ async fn run_trial(
     .await
     {
         Ok(session) => session,
-        Err(error) => return failed(id, sample_id, &mut stages, start, error.to_string()),
+        Err(error) => return failed(id, sample_id, &stages, start, error.to_string()),
     };
     match wait_ready(&session).await {
         Ok(()) => stages.push((TrialStage::ConnectReady, start.elapsed().as_secs_f64())),
-        Err(error) => return failed(id, sample_id, &mut stages, start, error),
+        Err(error) => return failed(id, sample_id, &stages, start, error),
     }
 
     let mut confirmed: Vec<String> = Vec::new();
@@ -194,7 +201,7 @@ async fn run_trial(
             utterance_started = true;
         }
         if let Err(error) = session.send_audio(chunk).await {
-            return failed(id, sample_id, &mut stages, start, error.to_string());
+            return failed(id, sample_id, &stages, start, error.to_string());
         }
         // Pace capture while draining events immediately, matching the
         // production select loop where partials are consumed as they arrive.
@@ -207,17 +214,20 @@ async fn run_trial(
             match tokio::time::timeout(pace_until - now, session.next_event()).await {
                 Ok(Ok(event)) => collect(&mut stages, &mut confirmed, event, start),
                 Ok(Err(error)) => {
-                    return failed(id, sample_id, &mut stages, start, error.to_string());
+                    return failed(id, sample_id, &stages, start, error.to_string());
                 }
                 Err(_) => break,
             }
         }
     }
     let stop_at = Instant::now();
-    stages.push((TrialStage::Stop, stop_at.duration_since(start).as_secs_f64()));
+    stages.push((
+        TrialStage::Stop,
+        stop_at.duration_since(start).as_secs_f64(),
+    ));
 
     if let Err(error) = session.finish().await {
-        return failed(id, sample_id, &mut stages, start, error.to_string());
+        return failed(id, sample_id, &stages, start, error.to_string());
     }
     stages.push((TrialStage::FinishSent, start.elapsed().as_secs_f64()));
 
@@ -233,20 +243,26 @@ async fn run_trial(
             }
             Ok(event) => collect(&mut stages, &mut confirmed, event, start),
             Err(error) => {
-                return failed(id, sample_id, &mut stages, start, error.to_string());
+                return failed(id, sample_id, &stages, start, error.to_string());
             }
         }
     }
     let text = final_text.unwrap_or_else(|| confirmed.join(""));
     if text.trim().is_empty() {
-        return failed(id, sample_id, &mut stages, start, "no speech text".to_owned());
+        return failed(id, sample_id, &stages, start, "no speech text".to_owned());
     }
 
     if inject {
         let result = inject_via_wtype(&text).await;
         stages.push((TrialStage::InjectionComplete, start.elapsed().as_secs_f64()));
         if !result.ok {
-            return failed(id, sample_id, &mut stages, start, format!("injection: {}", result.message));
+            return failed(
+                id,
+                sample_id,
+                &stages,
+                start,
+                format!("injection: {}", result.message),
+            );
         }
     }
 
@@ -259,6 +275,7 @@ async fn run_trial(
     }
 }
 
+#[allow(clippy::ptr_arg)]
 fn collect(
     stages: &mut Vec<(TrialStage, f64)>,
     confirmed: &mut Vec<String>,
@@ -266,15 +283,15 @@ fn collect(
     start: Instant,
 ) {
     match event {
-        RealtimeEvent::Partial { .. } => {
-            if !stages.iter().any(|(stage, _)| *stage == TrialStage::FirstPartial) {
-                stages.push((TrialStage::FirstPartial, start.elapsed().as_secs_f64()));
-            }
+        RealtimeEvent::Partial { .. }
+            if !stages
+                .iter()
+                .any(|(stage, _)| *stage == TrialStage::FirstPartial) =>
+        {
+            stages.push((TrialStage::FirstPartial, start.elapsed().as_secs_f64()));
         }
-        RealtimeEvent::Completed { transcript } => {
-            if !transcript.is_empty() {
-                confirmed.push(transcript);
-            }
+        RealtimeEvent::Completed { transcript } if !transcript.is_empty() => {
+            confirmed.push(transcript);
         }
         _ => {}
     }
@@ -283,7 +300,7 @@ fn collect(
 fn failed(
     id: usize,
     _sample_id: &str,
-    stages: &mut Vec<(TrialStage, f64)>,
+    stages: &[(TrialStage, f64)],
     start: Instant,
     message: String,
 ) -> TrialOutcome {
@@ -291,7 +308,7 @@ fn failed(
     TrialOutcome {
         id,
         mode: "quick".to_owned(),
-        stages: stages.clone(),
+        stages: stages.to_vec(),
         success: false,
         error: Some(message),
     }
@@ -322,13 +339,5 @@ async fn wait_ready(session: &RealtimeSession) -> Result<(), String> {
             Ok(_) => continue,
             Err(error) => return Err(error.to_string()),
         }
-    }
-}
-
-async fn drain_event(session: &RealtimeSession) -> Result<Option<RealtimeEvent>, String> {
-    match tokio::time::timeout(Duration::from_millis(1), session.next_event()).await {
-        Ok(Ok(event)) => Ok(Some(event)),
-        Ok(Err(error)) => Err(error.to_string()),
-        Err(_) => Ok(None),
     }
 }

@@ -70,7 +70,10 @@ fn openai_compatible_extracts_choice_content() {
 
 #[test]
 fn ollama_reads_message_content_with_stream_disabled() {
-    let poster = ScriptedPoster::new(200, serde_json::json!({"message": {"content": "ollama 结果"}}));
+    let poster = ScriptedPoster::new(
+        200,
+        serde_json::json!({"message": {"content": "ollama 结果"}}),
+    );
     let processor = ChatProcessor::new(
         "ollama".to_owned(),
         "http://localhost:11434".to_owned(),
@@ -103,9 +106,15 @@ fn non_success_status_and_empty_content_are_errors() {
         Duration::from_secs(5),
         poster,
     );
-    assert!(matches!(processor.process("x"), Err(ProcessingError::Status(401))));
+    assert!(matches!(
+        processor.process("x"),
+        Err(ProcessingError::Status(401))
+    ));
 
-    let poster = ScriptedPoster::new(200, serde_json::json!({"choices": [{"message": {"content": "   "}}]}));
+    let poster = ScriptedPoster::new(
+        200,
+        serde_json::json!({"choices": [{"message": {"content": "   "}}]}),
+    );
     let processor = ChatProcessor::new(
         "openai-compatible".to_owned(),
         "https://api.example.com".to_owned(),
@@ -114,11 +123,16 @@ fn non_success_status_and_empty_content_are_errors() {
         Duration::from_secs(5),
         poster,
     );
-    assert!(matches!(processor.process("x"), Err(ProcessingError::Response(_))));
+    assert!(matches!(
+        processor.process("x"),
+        Err(ProcessingError::Response(_))
+    ));
 }
 
 #[test]
 fn none_provider_is_never_built_from_config() {
     let config = syllune::config::ProcessingConfig::default();
-    assert!(syllune::processing::from_config(&config).expect("build").is_none());
+    assert!(syllune::processing::from_config(&config)
+        .expect("build")
+        .is_none());
 }

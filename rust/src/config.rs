@@ -25,24 +25,13 @@ pub enum ConfigError {
 
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(default, deny_unknown_fields)]
+#[derive(Default)]
 pub struct AppConfig {
     pub asr: AsrConfig,
     pub cloud: CloudConfig,
     pub inject: InjectConfig,
     pub processing: ProcessingConfig,
     pub history: HistoryConfig,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            asr: AsrConfig::default(),
-            cloud: CloudConfig::default(),
-            inject: InjectConfig::default(),
-            processing: ProcessingConfig::default(),
-            history: HistoryConfig::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]

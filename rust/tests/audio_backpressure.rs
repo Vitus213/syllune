@@ -65,13 +65,12 @@ async fn default_capture_contract_is_16khz_mono_pcm16_32ms_chunks() {
 #[tokio::test]
 async fn odd_byte_tail_frame_fails_without_final_or_injection() {
     let log = new_log();
-    let mut transport = ScriptedTransport::new(log.clone());
+    let transport = ScriptedTransport::new(log.clone());
     transport.before_finish(Ok(RealtimeEvent::Ready));
     transport.trigger(1, ControlCommand::Stop);
-    transport
-        .after_finish(Ok(RealtimeEvent::Finished {
-            transcript: "不应出现".to_owned(),
-        }));
+    transport.after_finish(Ok(RealtimeEvent::Finished {
+        transcript: "不应出现".to_owned(),
+    }));
     let capture = FakeCapture::new(log.clone(), vec![vec![0; 1024]], Some(vec![1, 2, 3]));
     let plan = SessionPlan::new("cloud-realtime", true);
 
@@ -146,12 +145,11 @@ async fn slow_transport_overrunning_the_bounded_queue_fails_the_session() {
 #[tokio::test]
 async fn chunks_are_delivered_in_capture_order_exactly_once() {
     let log = new_log();
-    let mut transport = ScriptedTransport::new(log.clone());
+    let transport = ScriptedTransport::new(log.clone());
     transport.before_finish(Ok(RealtimeEvent::Ready));
-    transport
-        .after_finish(Ok(RealtimeEvent::Finished {
-            transcript: "完整".to_owned(),
-        }));
+    transport.after_finish(Ok(RealtimeEvent::Finished {
+        transcript: "完整".to_owned(),
+    }));
     let chunks: Vec<Vec<u8>> = (0..3).map(|index| vec![index as u8 + 1; 64]).collect();
     let mut capture = FakeCapture::new(log.clone(), chunks, Some(vec![9; 32]));
     capture.eof_on_empty = true;

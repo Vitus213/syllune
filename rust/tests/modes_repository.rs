@@ -16,7 +16,9 @@ fn open_seeds_builtins_and_keeps_quick_first() {
         !path.is_file(),
         "opening must not write until the first mutation"
     );
-    repository.add("触发持久化", "p", "").expect("first mutation");
+    repository
+        .add("触发持久化", "p", "")
+        .expect("first mutation");
     assert!(path.is_file(), "first mutation must persist modes.json");
     let raw = fs::read_to_string(&path).expect("modes.json readable");
     let parsed: serde_json::Value = serde_json::from_str(&raw).expect("valid JSON");
@@ -100,7 +102,6 @@ fn duplicate_names_and_builtin_mutations_are_rejected() {
     ));
 }
 
-
 #[test]
 fn remove_user_mode_and_keep_builtins_intact() {
     let root = tempdir().expect("temporary root");
@@ -121,9 +122,14 @@ fn reload_repairs_missing_file_from_disk() {
     let mut repository = ModesRepository::open(path.clone()).expect("open repository");
 
     fs::write(&path, "not json").expect("corrupt file");
-    assert!(repository.reload().is_err(), "invalid JSON must fail reload");
+    assert!(
+        repository.reload().is_err(),
+        "invalid JSON must fail reload"
+    );
 
-    repository.add("恢复后", "p", "").expect("add persists fresh file");
+    repository
+        .add("恢复后", "p", "")
+        .expect("add persists fresh file");
     let modes = repository.reload().expect("reload from disk");
     assert!(modes.iter().any(|mode| mode.name == "恢复后"));
 }
@@ -138,5 +144,8 @@ fn template_expansion_is_single_pass_and_preserves_unknown_placeholders() {
         render_template("{unknown} stays", "t", "", ""),
         "{unknown} stays"
     );
-    assert_eq!(render_template("no placeholders", "t", "s", "c"), "no placeholders");
+    assert_eq!(
+        render_template("no placeholders", "t", "s", "c"),
+        "no placeholders"
+    );
 }

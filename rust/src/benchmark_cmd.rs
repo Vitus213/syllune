@@ -8,8 +8,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::benchmark::{
-    corpus_version, load_corpus, run_asr_benchmark_split, BenchmarkReport, BackendFactory,
-    CorpusEntry,
+    corpus_version, load_corpus, run_asr_benchmark_split, BackendFactory, BenchmarkReport,
 };
 use crate::config::{load_default_config, AppConfig};
 use crate::realtime::{RealtimeEvent, RealtimeSession};
@@ -93,9 +92,7 @@ pub async fn run_asr(args: AsrBenchmarkArgs) -> i32 {
     let factory = match args.backend.as_str() {
         "cloud-realtime" => {
             if config.cloud.api_key.trim().is_empty() {
-                eprintln!(
-                    "Syllune: cloud.api_key missing; benchmark skipped (unverified)"
-                );
+                eprintln!("Syllune: cloud.api_key missing; benchmark skipped (unverified)");
                 return 2;
             }
             Backend::Cloud {
@@ -196,9 +193,8 @@ impl BackendFactory for Backend {
         let config = config.clone();
         let pcm = pcm.to_vec();
         tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async move {
-                replay_cloud(&config, &pcm, chunk_interval).await
-            })
+            tokio::runtime::Handle::current()
+                .block_on(async move { replay_cloud(&config, &pcm, chunk_interval).await })
         })
     }
 }

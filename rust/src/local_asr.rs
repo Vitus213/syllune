@@ -68,7 +68,7 @@ impl LocalStreamingRecognizer {
     }
 
     pub fn accept_pcm(&mut self, pcm: &[u8]) -> Result<Vec<RealtimeEvent>, LocalAsrError> {
-        if pcm.len() % 2 != 0 {
+        if !pcm.len().is_multiple_of(2) {
             return Err(LocalAsrError::IncompletePcm(pcm.len()));
         }
         self.samples.clear();

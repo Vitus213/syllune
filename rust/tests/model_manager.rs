@@ -3,9 +3,7 @@ use std::io::Write;
 use std::path::Path;
 
 use sha2::{Digest, Sha256};
-use syllune::models::{
-    ArchiveType, CheckReport, Downloader, ModelError, ModelManager, ModelSpec,
-};
+use syllune::models::{ArchiveType, CheckReport, Downloader, ModelError, ModelManager, ModelSpec};
 use tempfile::tempdir;
 
 struct FixtureDownloader {
@@ -57,6 +55,46 @@ fn fixture_archive(members: &[(&str, &[u8])]) -> Vec<u8> {
     encoder.finish().expect("finish bz2")
 }
 
+#[test]
+fn install_accepts_explicit_directory_entries_in_archives() {
+    let root = tempdir().expect("temporary root");
+    // Real tarballs carry explicit directory entries (e.g. test_wavs/);
+    // they must not trip the file-member allowlist.
+    let mut builder = tar::Builder::new(Vec::new());
+    let mut dir_header = tar::Header::new_gnu();
+    dir_header.set_size(0);
+    dir_header.set_mode(0o755);
+    dir_header.set_entry_type(tar::EntryType::Directory);
+    dir_header.set_cksum();
+    builder
+        .append_data(&mut dir_header, "fixture-model/sub", std::io::empty())
+        .expect("append directory entry");
+    for (name, content) in [
+        ("encoder.int8.onnx", b"e".as_ref()),
+        ("decoder.int8.onnx", b"d".as_ref()),
+        ("tokens.txt", b"t".as_ref()),
+    ] {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(content.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, &format!("fixture-model/{name}"), content)
+            .expect("append member");
+    }
+    let tar_bytes = builder.into_inner().expect("finish tar");
+    let mut encoder = bzip2::write::BzEncoder::new(Vec::new(), bzip2::Compression::best());
+    encoder.write_all(&tar_bytes).expect("compress");
+    let archive = encoder.finish().expect("finish bz2");
+
+    let spec = fixture_spec(&archive);
+    let manager = ModelManager::new(&root.path().join("data"), &root.path().join("cache"));
+    let payload = manager
+        .install(&spec, &FixtureDownloader { bytes: archive })
+        .expect("install must accept directory entries");
+    assert!(payload.join("tokens.txt").is_file());
+}
+
 fn fixture_spec(archive: &[u8]) -> ModelSpec {
     ModelSpec {
         id: "fixture-online".to_owned(),
@@ -87,9 +125,12 @@ fn install_fixture(root: &Path) -> (ModelManager, ModelSpec, std::path::PathBuf,
     let spec = fixture_spec(&archive);
     let manager = ModelManager::new(&root.join("data"), &root.join("cache"));
     let payload = manager
-        .install(&spec, &FixtureDownloader {
-            bytes: archive.clone(),
-        })
+        .install(
+            &spec,
+            &FixtureDownloader {
+                bytes: archive.clone(),
+            },
+        )
         .expect("install fixture model");
     (manager, spec, payload, archive)
 }
@@ -137,8 +178,7 @@ fn check_reports_clean_payload_and_detects_corruption() {
     let (_, report) = manager.check(&spec).expect("check installed model");
     assert!(report.ok(), "{report:?}");
 
-    fs::write(payload.join("encoder.int8.onnx"), b"tampered")
-        .expect("corrupt payload file");
+    fs::write(payload.join("encoder.int8.onnx"), b"tampered").expect("corrupt payload file");
     let (_, report) = manager.check(&spec).expect("check corrupted model");
     assert!(
         report.corrupt.contains(&"encoder.int8.onnx".to_owned()),
@@ -148,7 +188,10 @@ fn check_reports_clean_payload_and_detects_corruption() {
 
     fs::remove_file(payload.join("tokens.txt")).expect("delete required file");
     let (_, report) = manager.check(&spec).expect("check missing model file");
-    assert!(report.missing.contains(&"tokens.txt".to_owned()), "{report:?}");
+    assert!(
+        report.missing.contains(&"tokens.txt".to_owned()),
+        "{report:?}"
+    );
 }
 
 #[test]
@@ -158,7 +201,10 @@ fn check_flags_unexpected_members() {
 
     fs::write(payload.join("rogue.onnx"), b"not in manifest").expect("add rogue file");
     let (_, report) = manager.check(&spec).expect("check payload with rogue file");
-    assert!(report.extra.contains(&"rogue.onnx".to_owned()), "{report:?}");
+    assert!(
+        report.extra.contains(&"rogue.onnx".to_owned()),
+        "{report:?}"
+    );
 }
 
 #[test]
@@ -240,8 +286,12 @@ fn streaming_paraformer_catalog_entry_pins_supply_chain_fields() {
     assert!(spec.url.starts_with("https://"));
     assert!(spec.sha256_sri.starts_with("sha256-"));
     assert!(spec.size_bytes > 0);
-    assert!(spec.allowed_members.contains(&"encoder.int8.onnx".to_owned()));
-    assert!(spec.required_paths.contains(&"decoder.int8.onnx".to_owned()));
+    assert!(spec
+        .allowed_members
+        .contains(&"encoder.int8.onnx".to_owned()));
+    assert!(spec
+        .required_paths
+        .contains(&"decoder.int8.onnx".to_owned()));
     assert!(!spec.license_status.is_empty());
     let report = CheckReport::default();
     assert!(report.ok());

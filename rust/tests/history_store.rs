@@ -40,7 +40,10 @@ fn schema_is_version_one_and_file_permissions_are_private() {
     let path = root.path().join("history.sqlite3");
     HistoryStore::open(path.clone()).expect("open store");
 
-    let mode = std::fs::metadata(&path).expect("metadata").permissions().mode();
+    let mode = std::fs::metadata(&path)
+        .expect("metadata")
+        .permissions()
+        .mode();
     assert_eq!(mode & 0o777, 0o600, "history file must be 0600");
 
     let connection = rusqlite::Connection::open(&path).expect("open sqlite");
@@ -56,7 +59,10 @@ fn query_paginates_with_stable_cursors() {
     let store = HistoryStore::open(root.path().join("history.sqlite3")).expect("open store");
     for index in 0..5 {
         store
-            .insert(&entry(&format!("raw{index}"), &format!("text{index}"), "quick"), "cloud-realtime")
+            .insert(
+                &entry(&format!("raw{index}"), &format!("text{index}"), "quick"),
+                "cloud-realtime",
+            )
             .expect("insert");
     }
 
@@ -66,7 +72,11 @@ fn query_paginates_with_stable_cursors() {
 
     let second = store.query(2, Some(&cursor)).expect("second page");
     assert_eq!(second.records.len(), 2);
-    let first_ids: Vec<&str> = page.records.iter().map(|record| record.id.as_str()).collect();
+    let first_ids: Vec<&str> = page
+        .records
+        .iter()
+        .map(|record| record.id.as_str())
+        .collect();
     assert!(
         second
             .records
@@ -89,10 +99,19 @@ fn query_paginates_with_stable_cursors() {
 fn delete_targets_specific_ids_and_delete_all_clears() {
     let root = tempdir().expect("temporary root");
     let store = HistoryStore::open(root.path().join("history.sqlite3")).expect("open store");
-    let first = store.insert(&entry("a", "a", "quick"), "cloud-realtime").unwrap();
-    let second = store.insert(&entry("b", "b", "quick"), "cloud-realtime").unwrap();
+    let first = store
+        .insert(&entry("a", "a", "quick"), "cloud-realtime")
+        .unwrap();
+    let second = store
+        .insert(&entry("b", "b", "quick"), "cloud-realtime")
+        .unwrap();
 
-    assert_eq!(store.delete(&[first.id.clone()]).expect("delete"), 1);
+    assert_eq!(
+        store
+            .delete(std::slice::from_ref(&first.id))
+            .expect("delete"),
+        1
+    );
     assert!(store.get(&first.id).expect("get").is_none());
     assert!(store.get(&second.id).expect("get").is_some());
 
@@ -104,8 +123,12 @@ fn delete_targets_specific_ids_and_delete_all_clears() {
 fn totals_and_usage_aggregate_character_counts() {
     let root = tempdir().expect("temporary root");
     let store = HistoryStore::open(root.path().join("history.sqlite3")).expect("open store");
-    store.insert(&entry("一", "一二三", "quick"), "cloud-realtime").unwrap();
-    store.insert(&entry("二", "四五", "quick"), "local-streaming").unwrap();
+    store
+        .insert(&entry("一", "一二三", "quick"), "cloud-realtime")
+        .unwrap();
+    store
+        .insert(&entry("二", "四五", "quick"), "local-streaming")
+        .unwrap();
 
     let totals = store.totals().expect("totals");
     assert_eq!(totals.records, 2);
@@ -114,7 +137,10 @@ fn totals_and_usage_aggregate_character_counts() {
     let usage = store.usage(7).expect("usage");
     let providers = usage["providers"].as_object().expect("providers");
     assert_eq!(providers.get("cloud-realtime"), Some(&serde_json::json!(1)));
-    assert_eq!(providers.get("local-streaming"), Some(&serde_json::json!(1)));
+    assert_eq!(
+        providers.get("local-streaming"),
+        Some(&serde_json::json!(1))
+    );
     assert!(store.usage(3).is_err(), "window must be 1, 7 or 30 days");
 }
 
@@ -140,7 +166,9 @@ fn reopening_store_migrates_idempotently_and_keeps_records() {
     let root = tempdir().expect("temporary root");
     let path = root.path().join("history.sqlite3");
     let store = HistoryStore::open(path.clone()).expect("open store");
-    let record = store.insert(&entry("持久", "持久", "quick"), "cloud-realtime").unwrap();
+    let record = store
+        .insert(&entry("持久", "持久", "quick"), "cloud-realtime")
+        .unwrap();
     drop(store);
 
     let store = HistoryStore::open(path).expect("reopen store");

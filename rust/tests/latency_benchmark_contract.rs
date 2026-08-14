@@ -1,6 +1,4 @@
-use syllune::latency::{
-    evaluate_gate, percentile, LatencyGate, LatencyThresholds, TrialOutcome, TrialStage,
-};
+use syllune::latency::{evaluate_gate, percentile, LatencyThresholds, TrialOutcome, TrialStage};
 
 fn trial(partial: f64, stop_to_final: f64, stop_to_inject: f64) -> TrialOutcome {
     TrialOutcome {
@@ -14,7 +12,10 @@ fn trial(partial: f64, stop_to_final: f64, stop_to_inject: f64) -> TrialOutcome 
             (TrialStage::TailSent, partial + 1.1),
             (TrialStage::FinishSent, partial + 1.2),
             (TrialStage::FinalReceived, partial + 1.0 + stop_to_final),
-            (TrialStage::InjectionComplete, partial + 1.0 + stop_to_inject),
+            (
+                TrialStage::InjectionComplete,
+                partial + 1.0 + stop_to_inject,
+            ),
         ],
         success: true,
         error: None,
@@ -27,7 +28,11 @@ fn percentile_interpolates_sorted_samples() {
     assert_eq!(percentile(&values, 50.0), 50.5);
     assert_eq!(percentile(&values, 95.0), 95.05);
     assert_eq!(percentile(&values, 99.0), 99.01);
-    assert_eq!(percentile(&[3.0, 1.0, 2.0], 50.0), 2.0, "unsorted input is sorted");
+    assert_eq!(
+        percentile(&[3.0, 1.0, 2.0], 50.0),
+        2.0,
+        "unsorted input is sorted"
+    );
     assert!(percentile(&[], 50.0).is_nan(), "empty input is undefined");
 }
 
@@ -65,7 +70,7 @@ fn gate_fails_when_any_threshold_is_exceeded() {
 
 #[test]
 fn non_quick_modes_are_never_counted_toward_the_quick_gate() {
-    let mut outcomes: Vec<TrialOutcome> = (0..100).map(|index| trial(0.3, 0.4, 0.7)).collect();
+    let mut outcomes: Vec<TrialOutcome> = (0..100).map(|_index| trial(0.3, 0.4, 0.7)).collect();
     for outcome in outcomes.iter_mut().take(50) {
         outcome.mode = "translate-en".to_owned();
     }

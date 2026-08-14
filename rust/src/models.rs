@@ -214,9 +214,7 @@ impl ModelManager {
         if actual_digest != expected_digest_hex {
             return Err(ModelError::Integrity(
                 spec.id.to_owned(),
-                format!(
-                    "SHA-256 mismatch: expected {expected_digest_hex}, got {actual_digest}"
-                ),
+                format!("SHA-256 mismatch: expected {expected_digest_hex}, got {actual_digest}"),
             ));
         }
         let metadata = fs::metadata(partial)?;
@@ -254,9 +252,9 @@ impl ModelManager {
     }
 
     pub fn check(&self, spec: &ModelSpec) -> Result<(PathBuf, CheckReport), ModelError> {
-        let payload = self.resolve(&spec.id)?.ok_or_else(|| {
-            ModelError::NotInstalled(spec.id.to_owned())
-        })?;
+        let payload = self
+            .resolve(&spec.id)?
+            .ok_or_else(|| ModelError::NotInstalled(spec.id.to_owned()))?;
         let report = self.check_payload(spec, &payload)?;
         Ok((payload, report))
     }
@@ -348,7 +346,9 @@ impl ModelManager {
             }
             match sha256_file(&file_path) {
                 Ok(digest) if digest == entry.sha256 => {
-                    let size = fs::metadata(&file_path).map(|m| m.len()).unwrap_or(u64::MAX);
+                    let size = fs::metadata(&file_path)
+                        .map(|m| m.len())
+                        .unwrap_or(u64::MAX);
                     if size != entry.size {
                         report.corrupt.push(relative.clone());
                     }
@@ -403,7 +403,10 @@ fn extract_tar_bz2(spec: &ModelSpec, archive: &Path, staging: &Path) -> Result<(
     let decoder = bzip2::read::BzDecoder::new(file);
     let mut entries = tar::Archive::new(decoder);
     let top_level = spec.top_level_directory.as_deref();
-    for entry in entries.entries().map_err(|error| ModelError::Archive(error.to_string()))? {
+    for entry in entries
+        .entries()
+        .map_err(|error| ModelError::Archive(error.to_string()))?
+    {
         let mut entry = entry.map_err(|error| ModelError::Archive(error.to_string()))?;
         let raw_path = entry
             .path()
@@ -426,14 +429,16 @@ fn extract_tar_bz2(spec: &ModelSpec, archive: &Path, staging: &Path) -> Result<(
         if relative.is_empty() {
             continue;
         }
+        // Directory entries are implicit parents of allowed members; only
+        // regular files are checked against the manifest allowlist.
+        if entry.header().entry_type().is_dir() {
+            fs::create_dir_all(staging.join(relative.trim_end_matches('/')))?;
+            continue;
+        }
         if !spec.allowed_members.contains(&relative) {
             return Err(ModelError::Archive(format!(
                 "archive member {relative} is not in the allowed manifest"
             )));
-        }
-        if entry.header().entry_type().is_dir() {
-            fs::create_dir_all(staging.join(&relative))?;
-            continue;
         }
         let target = staging.join(&relative);
         if let Some(parent) = target.parent() {
@@ -610,7 +615,6 @@ fn xdg_dir(variable: &str, fallback: &str) -> PathBuf {
     std::env::var(variable)
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
-            PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_owned()))
-                .join(fallback)
+            PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_owned())).join(fallback)
         })
 }

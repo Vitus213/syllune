@@ -51,7 +51,7 @@ impl RawCapture {
                 if self.pending.is_empty() {
                     return Ok(None);
                 }
-                if self.pending.len() % 2 != 0 {
+                if !self.pending.len().is_multiple_of(2) {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidData,
                         "capture ended with an incomplete PCM16 sample",
@@ -82,7 +82,7 @@ impl RawCapture {
         if !status.success() && self.pending.is_empty() {
             return Ok(None);
         }
-        if self.pending.len() % 2 != 0 {
+        if !self.pending.len().is_multiple_of(2) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "capture ended with an incomplete PCM16 sample",

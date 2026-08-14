@@ -48,7 +48,10 @@ fn model_check_unknown_id_fails_with_nonzero_exit() {
 
 #[test]
 fn mode_list_returns_json_array_with_quick_first() {
-    let output = syllune().args(["mode", "list"]).output().expect("run mode list");
+    let output = syllune()
+        .args(["mode", "list"])
+        .output()
+        .expect("run mode list");
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("UTF-8");
     let modes: Vec<serde_json::Value> = serde_json::from_str(&stdout).expect("JSON array");
@@ -60,8 +63,15 @@ fn mode_list_returns_json_array_with_quick_first() {
 fn mode_add_update_remove_roundtrip_via_cli() {
     let dir = tempfile::tempdir().expect("temporary root");
     let mut add = syllune();
-    add.args(["mode", "add", "--name", "CLI模式", "--prompt", "原文：{text}"])
-        .env("XDG_CONFIG_HOME", dir.path());
+    add.args([
+        "mode",
+        "add",
+        "--name",
+        "CLI模式",
+        "--prompt",
+        "原文：{text}",
+    ])
+    .env("XDG_CONFIG_HOME", dir.path());
     let output = add.output().expect("mode add");
     assert!(output.status.success(), "{output:?}");
     let added: serde_json::Value =
@@ -83,7 +93,8 @@ fn mode_add_update_remove_roundtrip_via_cli() {
     assert!(output.status.success(), "{output:?}");
 
     let mut list = syllune();
-    list.args(["mode", "list"]).env("XDG_CONFIG_HOME", dir.path());
+    list.args(["mode", "list"])
+        .env("XDG_CONFIG_HOME", dir.path());
     let output = list.output().expect("mode list");
     let modes: Vec<serde_json::Value> =
         serde_json::from_str(&String::from_utf8(output.stdout).unwrap()).expect("JSON array");
@@ -113,7 +124,9 @@ fn history_list_and_totals_have_stable_json_shape() {
     assert!(page.get("next_cursor").is_some());
 
     let mut totals = syllune();
-    totals.args(["history", "totals"]).env("XDG_DATA_HOME", dir.path());
+    totals
+        .args(["history", "totals"])
+        .env("XDG_DATA_HOME", dir.path());
     let output = totals.output().expect("history totals");
     assert!(output.status.success());
     let totals: serde_json::Value =

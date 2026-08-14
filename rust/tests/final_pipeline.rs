@@ -31,19 +31,23 @@ async fn run_success_session(
     plan: SessionPlan,
     processor: CountingProcessor,
     history: RecordingHistory,
-) -> (i32, Vec<OutputEvent>, Vec<String>, CountingProcessor, RecordingHistory) {
+) -> (
+    i32,
+    Vec<OutputEvent>,
+    Vec<String>,
+    CountingProcessor,
+    RecordingHistory,
+) {
     let log = new_log();
     let mut transport = ScriptedTransport::new(log.clone());
     transport.before_finish(Ok(RealtimeEvent::Ready));
-    transport
-        .before_finish(Ok(RealtimeEvent::Completed {
-            transcript: "原始识别文本".to_owned(),
-        }));
+    transport.before_finish(Ok(RealtimeEvent::Completed {
+        transcript: "原始识别文本".to_owned(),
+    }));
     transport.trigger(1, ControlCommand::Stop);
-    transport
-        .after_finish(Ok(RealtimeEvent::Finished {
-            transcript: "原始识别文本".to_owned(),
-        }));
+    transport.after_finish(Ok(RealtimeEvent::Finished {
+        transcript: "原始识别文本".to_owned(),
+    }));
     let capture = FakeCapture::new(log.clone(), vec![vec![0; 1024]], None);
     let (control_tx, control_rx) = mpsc::channel(8);
     transport.control_tx = Some(control_tx);
@@ -54,19 +58,18 @@ async fn run_success_session(
     let code = tokio::time::timeout(
         Duration::from_secs(5),
         run_session(
-            plan,
-            capture,
-            transport,
-            processor,
-            injector,
-            history,
-            control_rx,
-            &mut sink,
+            plan, capture, transport, processor, injector, history, control_rx, &mut sink,
         ),
     )
     .await
     .expect("run_session must terminate");
-    (code, sink.events, entries(&log), processor_probe, history_probe)
+    (
+        code,
+        sink.events,
+        entries(&log),
+        processor_probe,
+        history_probe,
+    )
 }
 
 #[tokio::test]
@@ -114,7 +117,10 @@ async fn custom_mode_processes_final_text_and_injects_the_result() {
     assert_eq!(injection, "injector.inject:translated text");
     let records = history.records();
     assert_eq!(records.len(), 1);
-    assert_eq!(records[0].processed_text.as_deref(), Some("translated text"));
+    assert_eq!(
+        records[0].processed_text.as_deref(),
+        Some("translated text")
+    );
     assert_eq!(records[0].final_text, "translated text");
     assert_eq!(records[0].processing_mode, "translate-en");
 }
@@ -180,7 +186,11 @@ async fn cancelled_and_empty_sessions_write_no_history() {
     )
     .await;
     assert_eq!(code, 130);
-    assert!(history_probe.records().is_empty(), "{:?}", history_probe.records());
+    assert!(
+        history_probe.records().is_empty(),
+        "{:?}",
+        history_probe.records()
+    );
 
     // Empty speech session: history must stay empty.
     let mut plan = SessionPlan::new("cloud-realtime", true);
@@ -210,7 +220,11 @@ async fn cancelled_and_empty_sessions_write_no_history() {
     )
     .await;
     assert_eq!(code2, 0);
-    assert!(history2_probe.records().is_empty(), "{:?}", history2_probe.records());
+    assert!(
+        history2_probe.records().is_empty(),
+        "{:?}",
+        history2_probe.records()
+    );
 }
 
 #[tokio::test]

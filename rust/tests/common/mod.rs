@@ -74,7 +74,7 @@ impl AudioCapture for FakeCapture {
     async fn start(&mut self) -> io::Result<()> {
         self.log.lock().push("capture.start".to_owned());
         if let Some(message) = self.start_error.take() {
-            return Err(io::Error::new(io::ErrorKind::Other, message));
+            return Err(io::Error::other(message));
         }
         Ok(())
     }
@@ -99,7 +99,7 @@ impl AudioCapture for FakeCapture {
     async fn stop_capture(&mut self) -> io::Result<Option<Vec<u8>>> {
         self.log.lock().push("capture.stop".to_owned());
         if let Some(message) = self.stop_error.take() {
-            return Err(io::Error::new(io::ErrorKind::Other, message));
+            return Err(io::Error::other(message));
         }
         Ok(self.tail.take())
     }
@@ -219,7 +219,7 @@ impl BackendTransport for ScriptedTransport {
             unreachable!("pending future resolved")
         }
         if let Some(message) = self.finish_error.lock().take() {
-            return Err(io::Error::new(io::ErrorKind::Other, message));
+            return Err(io::Error::other(message));
         }
         self.state.lock().finished = true;
         Ok(())
@@ -247,9 +247,7 @@ impl RecordingInjector {
 
 impl TextInjector for RecordingInjector {
     async fn inject(&mut self, text: &str) -> InjectionResult {
-        self.log
-            .lock()
-            .push(format!("injector.inject:{text}"));
+        self.log.lock().push(format!("injector.inject:{text}"));
         InjectionResult {
             ok: self.result_ok,
             method: "fake".to_owned(),

@@ -1,11 +1,9 @@
-use std::io;
 use std::time::Duration;
 
 use syllune::benchmark::{
     cer, load_corpus, normalize_content, run_asr_benchmark, BackendFactory, BenchmarkReport,
     CorpusEntry,
 };
-use syllune::realtime::RealtimeEvent;
 
 #[test]
 fn normalize_content_strips_punctuation_case_and_whitespace() {
@@ -14,7 +12,11 @@ fn normalize_content_strips_punctuation_case_and_whitespace() {
         normalize_content("你好世界 hello  world123"),
         "content comparison must ignore punctuation, case and spaces"
     );
-    assert_eq!(normalize_content("ＡＢＣ"), normalize_content("abc"), "NFKC");
+    assert_eq!(
+        normalize_content("ＡＢＣ"),
+        normalize_content("abc"),
+        "NFKC"
+    );
 }
 
 #[test]
@@ -40,18 +42,25 @@ fn corpus_loader_parses_jsonl_and_keeps_dev_test_separate() {
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].id, "a");
 
-    // dev and test corpus files must not overlap ids.
+    // dev and test corpus files must not overlap ids. The repository
+    // corpus is optional here because the Nix sandbox only ships rust/.
     let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("repo root");
-    let dev = load_corpus(&repo.join("scripts/asr_benchmark/corpus/dev.jsonl")).expect("dev");
-    let test = load_corpus(&repo.join("scripts/asr_benchmark/corpus/test.jsonl")).expect("test");
-    assert!(!dev.is_empty() && !test.is_empty());
-    let dev_ids: std::collections::HashSet<&str> = dev.iter().map(|entry| entry.id.as_str()).collect();
-    assert!(
-        test.iter().all(|entry| !dev_ids.contains(entry.id.as_str())),
-        "test split must be disjoint from dev"
-    );
+    let dev_path = repo.join("scripts/asr_benchmark/corpus/dev.jsonl");
+    let test_path = repo.join("scripts/asr_benchmark/corpus/test.jsonl");
+    if dev_path.is_file() && test_path.is_file() {
+        let dev = load_corpus(&dev_path).expect("dev");
+        let test = load_corpus(&test_path).expect("test");
+        assert!(!dev.is_empty() && !test.is_empty());
+        let dev_ids: std::collections::HashSet<&str> =
+            dev.iter().map(|entry| entry.id.as_str()).collect();
+        assert!(
+            test.iter()
+                .all(|entry| !dev_ids.contains(entry.id.as_str())),
+            "test split must be disjoint from dev"
+        );
+    }
 }
 
 #[test]
@@ -99,7 +108,11 @@ async fn benchmark_aggregates_content_cer_with_per_sample_errors() {
         entry("s3", "失败样本"),
     ];
     let mut factory = ScriptedFactory {
-        transcripts: vec!["你好，世界！".to_owned(), "语音输出".to_owned(), String::new()],
+        transcripts: vec![
+            "你好，世界！".to_owned(),
+            "语音输出".to_owned(),
+            String::new(),
+        ],
         fail_from: Some(2),
     };
     let pcm_by_id: Vec<(String, Vec<u8>)> = entries
@@ -122,12 +135,24 @@ async fn benchmark_aggregates_content_cer_with_per_sample_errors() {
     assert_eq!(report.corpus_version, "corpus-v1");
     assert_eq!(report.samples.len(), 3);
     assert_eq!(report.failures, 1);
-    let s1 = report.samples.iter().find(|sample| sample.id == "s1").unwrap();
+    let s1 = report
+        .samples
+        .iter()
+        .find(|sample| sample.id == "s1")
+        .unwrap();
     assert_eq!(s1.cer, 0.0, "punctuation must not count as errors");
-    let s2 = report.samples.iter().find(|sample| sample.id == "s2").unwrap();
+    let s2 = report
+        .samples
+        .iter()
+        .find(|sample| sample.id == "s2")
+        .unwrap();
     assert!(s2.cer > 0.0);
     assert!(report.content_cer > 0.0);
-    let failed = report.samples.iter().find(|sample| sample.id == "s3").unwrap();
+    let failed = report
+        .samples
+        .iter()
+        .find(|sample| sample.id == "s3")
+        .unwrap();
     assert!(failed.error.is_some());
 }
 

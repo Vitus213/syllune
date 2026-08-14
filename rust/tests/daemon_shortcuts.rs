@@ -29,7 +29,7 @@ impl SessionRunner for FixtureRunner {
     ) -> Pin<Box<dyn Future<Output = Result<i32, String>> + Send>> {
         self.sessions_started += 1;
         let log = self.log.clone();
-        let mut transport = ScriptedTransport::new(log.clone());
+        let transport = ScriptedTransport::new(log.clone());
         transport.before_finish(Ok(RealtimeEvent::Ready));
         transport.before_finish(Ok(RealtimeEvent::Completed {
             transcript: "会话文本".to_owned(),
@@ -96,11 +96,9 @@ async fn activate_twice_runs_one_session_then_normal_stop_with_single_injection(
     let log = new_log();
     let mut runner = runner(log.clone());
     let history = runner.history.clone();
-    runner
-        .events
-        .push_back(Ok(RealtimeEvent::Finished {
-            transcript: "会话文本".to_owned(),
-        }));
+    runner.events.push_back(Ok(RealtimeEvent::Finished {
+        transcript: "会话文本".to_owned(),
+    }));
     let mut gateway = Gateway::new(runner);
 
     assert_eq!(gateway.activate(), Ok(ActivateOutcome::Started));
@@ -124,7 +122,7 @@ async fn activate_twice_runs_one_session_then_normal_stop_with_single_injection(
 #[tokio::test]
 async fn activate_during_stop_flush_is_rejected_without_a_second_session() {
     let log = new_log();
-    let mut runner = runner(log.clone());
+    let runner = runner(log.clone());
     // No Finished event arrives: the stop flush waits, creating a window
     // where activate must be rejected instead of starting a second session.
     let mut gateway = Gateway::new(runner);
@@ -156,7 +154,7 @@ async fn activate_during_stop_flush_is_rejected_without_a_second_session() {
 #[tokio::test]
 async fn cancel_during_recording_yields_cancelled_exit_and_no_history() {
     let log = new_log();
-    let mut runner = runner(log.clone());
+    let runner = runner(log.clone());
     let history = runner.history.clone();
     let mut gateway = Gateway::new(runner);
 

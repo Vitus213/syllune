@@ -5,14 +5,15 @@ use std::time::Duration;
 
 use parking_lot::Mutex;
 use std::sync::Arc;
-use syllune::batch::{
-    load_wav_pcm16, BatchError, BatchPoster, CloudBatchClient,
-};
+use syllune::batch::{load_wav_pcm16, BatchError, BatchPoster, CloudBatchClient};
 use tempfile::tempdir;
 
 fn write_wav(path: &std::path::Path, samples: &[i16]) {
     let mut file = std::fs::File::create(path).expect("create wav");
-    let data_bytes: Vec<u8> = samples.iter().flat_map(|sample| sample.to_le_bytes()).collect();
+    let data_bytes: Vec<u8> = samples
+        .iter()
+        .flat_map(|sample| sample.to_le_bytes())
+        .collect();
     let data_len = data_bytes.len() as u32;
     let riff_len = 36 + data_len;
     file.write_all(b"RIFF").unwrap();
@@ -79,7 +80,12 @@ fn wav_loader_rejects_wrong_format_and_clamps_oversized_data_length() {
     assert_eq!(pcm.len(), 4);
 }
 
-fn patch_wav_fields(bytes: &[u8], channels: Option<u16>, rate: Option<u32>, data_len: Option<u32>) -> Vec<u8> {
+fn patch_wav_fields(
+    bytes: &[u8],
+    channels: Option<u16>,
+    rate: Option<u32>,
+    data_len: Option<u32>,
+) -> Vec<u8> {
     let mut out = bytes.to_vec();
     if let Some(channels) = channels {
         out[22..24].copy_from_slice(&channels.to_le_bytes());
@@ -104,7 +110,7 @@ impl BatchPoster for ScriptedBatchPoster {
     fn post_json(
         &self,
         url: &str,
-        body: &str,
+        _body: &str,
         bearer: &str,
         _timeout: Duration,
     ) -> Result<(u16, String), BatchError> {
@@ -143,7 +149,9 @@ fn cloud_client_sends_base64_wav_and_returns_first_text() {
     let calls = poster.calls.clone();
     let client = client_with(poster);
 
-    let text = client.transcribe_wav_bytes(b"RIFFfake").expect("transcribe");
+    let text = client
+        .transcribe_wav_bytes(b"RIFFfake")
+        .expect("transcribe");
     assert_eq!(text, "你好世界");
     let (url, bearer) = &calls.lock()[0];
     assert_eq!(

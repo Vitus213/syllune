@@ -117,15 +117,16 @@ impl<H: HttpPoster> ChatProcessor<H> {
                 });
                 (url, payload)
             }
-            other => return Err(ProcessingError::Request(format!("unknown provider: {other}"))),
+            other => {
+                return Err(ProcessingError::Request(format!(
+                    "unknown provider: {other}"
+                )))
+            }
         };
         let bearer = (!self.api_key.is_empty()).then_some(self.api_key.as_str());
-        let (status, body) = self.poster.post_json(
-            &url,
-            &payload.to_string(),
-            bearer,
-            self.timeout,
-        )?;
+        let (status, body) =
+            self.poster
+                .post_json(&url, &payload.to_string(), bearer, self.timeout)?;
         if status == 401 || status == 403 {
             return Err(ProcessingError::Status(status));
         }
@@ -148,7 +149,9 @@ impl<H: HttpPoster> ChatProcessor<H> {
 }
 
 /// Build the production processor from config; `none` maps to `None`.
-pub fn from_config(config: &ProcessingConfig) -> Result<Option<ChatProcessor<UreqPoster>>, ProcessingError> {
+pub fn from_config(
+    config: &ProcessingConfig,
+) -> Result<Option<ChatProcessor<UreqPoster>>, ProcessingError> {
     match config.provider.as_str() {
         "none" => Ok(None),
         "openai-compatible" | "ollama" => {

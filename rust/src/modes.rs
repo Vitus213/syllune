@@ -119,13 +119,12 @@ impl ModesRepository {
     }
 
     fn load(path: &Path) -> Result<Vec<Mode>, ModesError> {
-        let raw = fs::read_to_string(path).map_err(|error| {
-            ModesError::Read(path.display().to_string(), error.to_string())
-        })?;
-        let modes: Vec<Mode> = serde_json::from_str(&raw).map_err(|error| {
-            ModesError::Read(path.display().to_string(), error.to_string())
-        })?;
-        validate(&modes).map_err(|message| ModesError::Read(path.display().to_string(), message))?;
+        let raw = fs::read_to_string(path)
+            .map_err(|error| ModesError::Read(path.display().to_string(), error.to_string()))?;
+        let modes: Vec<Mode> = serde_json::from_str(&raw)
+            .map_err(|error| ModesError::Read(path.display().to_string(), error.to_string()))?;
+        validate(&modes)
+            .map_err(|message| ModesError::Read(path.display().to_string(), message))?;
         Ok(sort_modes(modes))
     }
 
@@ -266,9 +265,8 @@ impl ModesRepository {
 
 fn store(path: &Path, modes: &[Mode]) -> Result<(), ModesError> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| {
-            ModesError::Write(path.display().to_string(), error.to_string())
-        })?;
+        fs::create_dir_all(parent)
+            .map_err(|error| ModesError::Write(path.display().to_string(), error.to_string()))?;
     }
     let content = serde_json::to_string_pretty(modes)
         .map_err(|error| ModesError::Write(path.display().to_string(), error.to_string()))?

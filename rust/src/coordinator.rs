@@ -151,6 +151,7 @@ enum Step<T> {
 
 /// Run one recognition session to completion and return the process exit
 /// code: `0` success, `1` failure, `130` cancellation.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_session<C, T, P, J, H, S>(
     plan: SessionPlan,
     mut capture: C,
@@ -283,10 +284,8 @@ where
         Step::Value(Err(error)) => return fail(sink, &format!("capture stop: {error}")),
         Step::TimedOut => return fail(sink, "capture stop timed out"),
         Step::Command(command) => {
-            return handle_flush_command(
-                command, &mut session, &mut capture, &mut transport, sink,
-            )
-            .await
+            return handle_flush_command(command, &mut session, &mut capture, &mut transport, sink)
+                .await
         }
     };
     if let Some(tail) = tail {
@@ -309,7 +308,11 @@ where
             Step::TimedOut => return fail(sink, "flush send timed out"),
             Step::Command(command) => {
                 return handle_flush_command(
-                    command, &mut session, &mut capture, &mut transport, sink,
+                    command,
+                    &mut session,
+                    &mut capture,
+                    &mut transport,
+                    sink,
                 )
                 .await
             }
@@ -320,10 +323,8 @@ where
         Step::Value(Err(error)) => return fail(sink, &format!("backend finish: {error}")),
         Step::TimedOut => return fail(sink, "backend finish timed out"),
         Step::Command(command) => {
-            return handle_flush_command(
-                command, &mut session, &mut capture, &mut transport, sink,
-            )
-            .await
+            return handle_flush_command(command, &mut session, &mut capture, &mut transport, sink)
+                .await
         }
     }
 
@@ -335,7 +336,11 @@ where
             Step::TimedOut => return fail(sink, "final event timed out"),
             Step::Command(command) => {
                 return handle_flush_command(
-                    command, &mut session, &mut capture, &mut transport, sink,
+                    command,
+                    &mut session,
+                    &mut capture,
+                    &mut transport,
+                    sink,
                 )
                 .await
             }
@@ -425,7 +430,12 @@ where
     fail(sink, "audio backlog exceeded the bounded queue capacity")
 }
 
-async fn send_failed<C, T, S>(capture: &mut C, transport: &mut T, sink: &mut S, message: &str) -> i32
+async fn send_failed<C, T, S>(
+    capture: &mut C,
+    transport: &mut T,
+    sink: &mut S,
+    message: &str,
+) -> i32
 where
     C: AudioCapture,
     T: BackendTransport,

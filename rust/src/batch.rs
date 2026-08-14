@@ -187,11 +187,7 @@ impl<P: BatchPoster> CloudBatchClient<P> {
             "model": self.model,
             "input": { "messages": [{ "role": "user", "content": content }] },
         });
-        let url = format!(
-            "{}{}",
-            self.base_url.trim_end_matches('/'),
-            GENERATION_PATH
-        );
+        let url = format!("{}{}", self.base_url.trim_end_matches('/'), GENERATION_PATH);
         let mut last_error = BatchError::Cloud("no attempts made".to_owned());
         for attempt in 0..3 {
             match self
@@ -203,7 +199,8 @@ impl<P: BatchPoster> CloudBatchClient<P> {
                     return Err(BatchError::CloudAuth(status))
                 }
                 Ok((status, _body)) if status == 429 || status >= 500 => {
-                    last_error = BatchError::Cloud(format!("HTTP {status} (attempt {})", attempt + 1));
+                    last_error =
+                        BatchError::Cloud(format!("HTTP {status} (attempt {})", attempt + 1));
                     std::thread::sleep(Duration::from_millis(250 * 2_u64.pow(attempt)));
                 }
                 Ok((status, _body)) => return Err(BatchError::Cloud(format!("HTTP {status}"))),
@@ -222,7 +219,9 @@ fn extract_text(body: &str) -> Result<String, BatchError> {
         serde_json::from_str(body).map_err(|error| BatchError::Cloud(error.to_string()))?;
     let content = &parsed["output"]["choices"][0]["message"]["content"];
     let Some(items) = content.as_array() else {
-        return Err(BatchError::Cloud("response has no content array".to_owned()));
+        return Err(BatchError::Cloud(
+            "response has no content array".to_owned(),
+        ));
     };
     if items.is_empty() {
         return Ok(String::new());
@@ -268,9 +267,7 @@ impl LocalBatchRecognizer {
     pub fn transcribe_pcm16(&self, pcm: &[u8]) -> Result<String, BatchError> {
         let samples: Vec<f32> = pcm
             .chunks_exact(2)
-            .map(|bytes| {
-                f32::from(i16::from_le_bytes([bytes[0], bytes[1]])) / f32::from(i16::MAX)
-            })
+            .map(|bytes| f32::from(i16::from_le_bytes([bytes[0], bytes[1]])) / f32::from(i16::MAX))
             .collect();
         let stream = self.recognizer.create_stream();
         stream.accept_waveform(SAMPLE_RATE as i32, &samples);
@@ -341,15 +338,13 @@ pub fn record_seconds(seconds: f64, destination: &Path) -> Result<(), BatchError
             "--format",
             "s16",
         ])
-        .arg(&format!("--file-format=wav"))
+        .arg("--file-format=wav")
         .arg(destination)
         .stdin(std::process::Stdio::null())
         .status()?;
     let _ = seconds;
     if !status.success() {
-        return Err(BatchError::Local(format!(
-            "pw-record exited with {status}"
-        )));
+        return Err(BatchError::Local(format!("pw-record exited with {status}")));
     }
     Ok(())
 }
