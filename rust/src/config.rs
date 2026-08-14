@@ -49,16 +49,20 @@ impl Default for AppConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct AsrConfig {
     pub streaming_backend: String,
+    pub batch_backend: String,
     pub final_backend: Option<String>,
     pub local_model_dir: Option<std::path::PathBuf>,
+    pub batch_model_dir: Option<std::path::PathBuf>,
 }
 
 impl Default for AsrConfig {
     fn default() -> Self {
         Self {
             streaming_backend: "cloud-realtime".to_owned(),
+            batch_backend: "cloud".to_owned(),
             final_backend: None,
             local_model_dir: None,
+            batch_model_dir: None,
         }
     }
 }
@@ -67,6 +71,9 @@ impl Default for AsrConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct CloudConfig {
     pub api_key: String,
+    pub base_url: String,
+    pub model: String,
+    pub timeout_seconds: f64,
     pub realtime_endpoint: String,
     pub realtime_model: String,
 }
@@ -75,6 +82,9 @@ impl Default for CloudConfig {
     fn default() -> Self {
         Self {
             api_key: String::new(),
+            base_url: "https://dashscope.aliyuncs.com".to_owned(),
+            model: "qwen3-asr-flash-2026-02-10".to_owned(),
+            timeout_seconds: 60.0,
             realtime_endpoint: DEFAULT_REALTIME_ENDPOINT.to_owned(),
             realtime_model: DEFAULT_REALTIME_MODEL.to_owned(),
         }
@@ -196,4 +206,20 @@ impl AppConfig {
         }
         Ok(self)
     }
+}
+
+/// Load the Syllune XDG config file when present, otherwise defaults.
+/// Missing files are valid; unreadable or invalid files are errors.
+pub fn load_default_config() -> Result<AppConfig, ConfigError> {
+    let root = std::env::var("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_owned()))
+                .join(".config")
+        });
+    let path = root.join("syllune").join("config.toml");
+    if !path.exists() {
+        return Ok(AppConfig::default());
+    }
+    AppConfig::load(&path)
 }

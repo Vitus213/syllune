@@ -1,0 +1,222 @@
+mod common;
+
+use std::io::Write;
+use std::time::Duration;
+
+use parking_lot::Mutex;
+use std::sync::Arc;
+use syllune::batch::{
+    load_wav_pcm16, BatchError, BatchPoster, CloudBatchClient,
+};
+use tempfile::tempdir;
+
+fn write_wav(path: &std::path::Path, samples: &[i16]) {
+    let mut file = std::fs::File::create(path).expect("create wav");
+    let data_bytes: Vec<u8> = samples.iter().flat_map(|sample| sample.to_le_bytes()).collect();
+    let data_len = data_bytes.len() as u32;
+    let riff_len = 36 + data_len;
+    file.write_all(b"RIFF").unwrap();
+    file.write_all(&riff_len.to_le_bytes()).unwrap();
+    file.write_all(b"WAVE").unwrap();
+    file.write_all(b"fmt ").unwrap();
+    file.write_all(&16u32.to_le_bytes()).unwrap();
+    file.write_all(&1u16.to_le_bytes()).unwrap(); // PCM
+    file.write_all(&1u16.to_le_bytes()).unwrap(); // mono
+    file.write_all(&16000u32.to_le_bytes()).unwrap();
+    file.write_all(&32000u32.to_le_bytes()).unwrap(); // byte rate
+    file.write_all(&2u16.to_le_bytes()).unwrap(); // block align
+    file.write_all(&16u16.to_le_bytes()).unwrap(); // bits
+    file.write_all(b"data").unwrap();
+    file.write_all(&data_len.to_le_bytes()).unwrap();
+    file.write_all(&data_bytes).unwrap();
+}
+
+#[test]
+fn wav_loader_accepts_mono_pcm16_16khz() {
+    let root = tempdir().expect("temporary root");
+    let path = root.path().join("sample.wav");
+    write_wav(&path, &[1, -2, 3, -4]);
+
+    let pcm = load_wav_pcm16(&path).expect("load wav");
+    assert_eq!(pcm.len(), 8);
+    assert_eq!(&pcm[0..2], &1i16.to_le_bytes());
+    assert_eq!(&pcm[2..4], &(-2i16).to_le_bytes());
+}
+
+#[test]
+fn wav_loader_rejects_wrong_format_and_clamps_oversized_data_length() {
+    let root = tempdir().expect("temporary root");
+
+    // Stereo rejected.
+    let path = root.path().join("stereo.wav");
+    write_wav(&path, &[1, 2]);
+    std::fs::write(
+        &path,
+        patch_wav_fields(&std::fs::read(&path).unwrap(), Some(2), None, None),
+    )
+    .unwrap();
+    assert!(matches!(load_wav_pcm16(&path), Err(BatchError::Wav(msg)) if msg.contains("mono")));
+
+    // Wrong rate rejected.
+    let path = root.path().join("rate.wav");
+    write_wav(&path, &[1, 2]);
+    std::fs::write(
+        &path,
+        patch_wav_fields(&std::fs::read(&path).unwrap(), None, Some(8000), None),
+    )
+    .unwrap();
+    assert!(matches!(load_wav_pcm16(&path), Err(BatchError::Wav(msg)) if msg.contains("16000")));
+
+    // RF64-style huge data length must clamp to the actual bytes.
+    let path = root.path().join("clamp.wav");
+    write_wav(&path, &[1, 2]);
+    std::fs::write(
+        &path,
+        patch_wav_fields(&std::fs::read(&path).unwrap(), None, None, Some(0xFFFFFFFF)),
+    )
+    .unwrap();
+    let pcm = load_wav_pcm16(&path).expect("clamped load");
+    assert_eq!(pcm.len(), 4);
+}
+
+fn patch_wav_fields(bytes: &[u8], channels: Option<u16>, rate: Option<u32>, data_len: Option<u32>) -> Vec<u8> {
+    let mut out = bytes.to_vec();
+    if let Some(channels) = channels {
+        out[22..24].copy_from_slice(&channels.to_le_bytes());
+    }
+    if let Some(rate) = rate {
+        out[24..28].copy_from_slice(&rate.to_le_bytes());
+    }
+    if let Some(len) = data_len {
+        // data chunk header starts at offset 36 for this minimal layout.
+        out[40..44].copy_from_slice(&len.to_le_bytes());
+    }
+    out
+}
+
+#[derive(Clone)]
+struct ScriptedBatchPoster {
+    responses: Arc<Mutex<Vec<(u16, String)>>>,
+    calls: Arc<Mutex<Vec<(String, String)>>>,
+}
+
+impl BatchPoster for ScriptedBatchPoster {
+    fn post_json(
+        &self,
+        url: &str,
+        body: &str,
+        bearer: &str,
+        _timeout: Duration,
+    ) -> Result<(u16, String), BatchError> {
+        self.calls.lock().push((url.to_owned(), bearer.to_owned()));
+        let response = self
+            .responses
+            .lock()
+            .pop()
+            .unwrap_or_else(|| (500, String::new()));
+        Ok(response)
+    }
+}
+
+fn client_with(poster: ScriptedBatchPoster) -> CloudBatchClient<ScriptedBatchPoster> {
+    CloudBatchClient::new(
+        "https://dashscope.example.com/".to_owned(),
+        "sk-test".to_owned(),
+        "qwen3-asr-flash-2026-02-10".to_owned(),
+        Duration::from_secs(1),
+        poster,
+    )
+}
+
+#[test]
+fn cloud_client_sends_base64_wav_and_returns_first_text() {
+    let poster = ScriptedBatchPoster {
+        responses: Arc::new(Mutex::new(vec![(
+            200,
+            serde_json::json!({
+                "output": {"choices": [{"message": {"content": [{"text": "  你好世界  "}]}}]}
+            })
+            .to_string(),
+        )])),
+        calls: Arc::new(Mutex::new(Vec::new())),
+    };
+    let calls = poster.calls.clone();
+    let client = client_with(poster);
+
+    let text = client.transcribe_wav_bytes(b"RIFFfake").expect("transcribe");
+    assert_eq!(text, "你好世界");
+    let (url, bearer) = &calls.lock()[0];
+    assert_eq!(
+        url,
+        "https://dashscope.example.com/api/v1/services/aigc/multimodal-generation/generation"
+    );
+    assert_eq!(bearer, "sk-test");
+}
+
+#[test]
+fn cloud_client_treats_401_403_as_auth_failures_without_retry() {
+    let poster = ScriptedBatchPoster {
+        responses: Arc::new(Mutex::new(vec![(403, String::new())])),
+        calls: Arc::new(Mutex::new(Vec::new())),
+    };
+    let calls = poster.calls.clone();
+    let client = client_with(poster);
+
+    let error = client.transcribe_wav_bytes(b"x").expect_err("auth failure");
+    assert!(matches!(error, BatchError::CloudAuth(403)), "{error:?}");
+    assert_eq!(calls.lock().len(), 1, "auth failures must not retry");
+}
+
+#[test]
+fn cloud_client_retries_transient_errors_then_succeeds() {
+    let poster = ScriptedBatchPoster {
+        responses: Arc::new(Mutex::new(vec![
+            (
+                200,
+                serde_json::json!({
+                    "output": {"choices": [{"message": {"content": [{"text": "重试成功"}]}}]}
+                })
+                .to_string(),
+            ),
+            (503, String::new()),
+        ])),
+        calls: Arc::new(Mutex::new(Vec::new())),
+    };
+    let calls = poster.calls.clone();
+    let client = client_with(poster);
+
+    let text = client.transcribe_wav_bytes(b"x").expect("eventual success");
+    assert_eq!(text, "重试成功");
+    assert_eq!(calls.lock().len(), 2);
+}
+
+#[test]
+fn cloud_client_requires_api_key() {
+    let poster = ScriptedBatchPoster {
+        responses: Arc::new(Mutex::new(Vec::new())),
+        calls: Arc::new(Mutex::new(Vec::new())),
+    };
+    let calls = poster.calls.clone();
+    let mut client = client_with(poster);
+    client.api_key = String::new();
+
+    let error = client.transcribe_wav_bytes(b"x").expect_err("missing key");
+    assert!(matches!(error, BatchError::CloudAuth(0)), "{error:?}");
+    assert!(calls.lock().is_empty(), "no network call without a key");
+}
+
+#[test]
+fn empty_content_array_maps_to_empty_text() {
+    let poster = ScriptedBatchPoster {
+        responses: Arc::new(Mutex::new(vec![(
+            200,
+            serde_json::json!({
+                "output": {"choices": [{"message": {"content": []}}]}
+            })
+            .to_string(),
+        )])),
+        calls: Arc::new(Mutex::new(Vec::new())),
+    };
+    let client = client_with(poster);
+    assert_eq!(client.transcribe_wav_bytes(b"x").expect("silent"), "");
+}

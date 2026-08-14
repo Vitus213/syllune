@@ -18,8 +18,8 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     Stream(StreamArgs),
-    Transcribe,
-    Record,
+    Transcribe(TranscribeArgs),
+    Record(RecordArgs),
     Model(ModelArgs),
     Doctor,
     Mode(ModeArgs),
@@ -37,6 +37,29 @@ struct StreamArgs {
     no_inject: bool,
     #[arg(long, default_value = "quick")]
     mode: String,
+}
+
+#[derive(Debug, Args)]
+struct TranscribeArgs {
+    wav: PathBuf,
+    #[arg(long)]
+    backend: Option<String>,
+    #[arg(long)]
+    inject: bool,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
+struct RecordArgs {
+    #[arg(long, default_value_t = 5.0)]
+    seconds: f64,
+    #[arg(long)]
+    backend: Option<String>,
+    #[arg(long)]
+    no_inject: bool,
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(Debug, Args)]
@@ -124,6 +147,24 @@ async fn main() {
                 1
             }
         },
+        Command::Transcribe(args) => {
+            syllune::batch_cmd::transcribe(syllune::batch_cmd::TranscribeArgs {
+                wav: args.wav,
+                backend: args.backend,
+                inject: args.inject,
+                json: args.json,
+            })
+            .await
+        }
+        Command::Record(args) => {
+            syllune::batch_cmd::record(syllune::batch_cmd::RecordArgs {
+                seconds: args.seconds,
+                backend: args.backend,
+                no_inject: args.no_inject,
+                json: args.json,
+            })
+            .await
+        }
         Command::Model(args) => syllune::model_cmd::run(
             match args.action {
                 ModelAction::List => syllune::model_cmd::ModelCommand::List,

@@ -510,26 +510,33 @@ struct WtypeInjector;
 
 impl TextInjector for WtypeInjector {
     async fn inject(&mut self, text: &str) -> InjectionResult {
-        let child = Command::new("wtype")
-            .arg("--")
-            .arg(text)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn();
-        let child = match child {
-            Ok(child) => child,
-            Err(error) => return wtype_result(false, &error.to_string()),
-        };
-        match timeout(Duration::from_secs(1), child.wait_with_output()).await {
-            Ok(Ok(output)) if output.status.success() => wtype_result(true, ""),
-            Ok(Ok(output)) => wtype_result(
-                false,
-                &String::from_utf8_lossy(&output.stderr).trim().to_owned(),
-            ),
-            Ok(Err(error)) => wtype_result(false, &error.to_string()),
-            Err(_) => wtype_result(false, "wtype timed out"),
-        }
+        inject_via_wtype(text).await
+    }
+}
+
+/// Inject text through `wtype`. Shared by the streaming session and the
+/// batch transcribe/record commands. Returns a failure result (never an
+/// error) when wtype is missing, fails or times out.
+pub async fn inject_via_wtype(text: &str) -> InjectionResult {
+    let child = Command::new("wtype")
+        .arg("--")
+        .arg(text)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn();
+    let child = match child {
+        Ok(child) => child,
+        Err(error) => return wtype_result(false, &error.to_string()),
+    };
+    match timeout(Duration::from_secs(1), child.wait_with_output()).await {
+        Ok(Ok(output)) if output.status.success() => wtype_result(true, ""),
+        Ok(Ok(output)) => wtype_result(
+            false,
+            &String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+        ),
+        Ok(Err(error)) => wtype_result(false, &error.to_string()),
+        Err(_) => wtype_result(false, "wtype timed out"),
     }
 }
 

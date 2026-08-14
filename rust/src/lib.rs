@@ -1,4 +1,6 @@
 pub mod capture;
+pub mod batch_cmd;
+pub mod batch;
 pub mod config;
 pub mod coordinator;
 pub mod history;
