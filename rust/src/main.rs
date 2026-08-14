@@ -44,7 +44,14 @@ enum BenchmarkAction {
         #[arg(long)]
         enforce: bool,
     },
-    Latency,
+    Latency {
+        #[arg(long, default_value_t = 100)]
+        trials: usize,
+        #[arg(long)]
+        inject: bool,
+        #[arg(long)]
+        enforce: bool,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -277,9 +284,16 @@ async fn main() {
                 bench_args.enforce = enforce;
                 syllune::benchmark_cmd::run_asr(bench_args).await
             }
-            BenchmarkAction::Latency => {
-                eprintln!("Syllune: benchmark latency is not wired in this build");
-                2
+            BenchmarkAction::Latency {
+                trials,
+                inject,
+                enforce,
+            } => {
+                let mut latency_args = syllune::latency_cmd::LatencyBenchmarkArgs::new();
+                latency_args.trials = trials;
+                latency_args.inject = inject;
+                latency_args.enforce = enforce;
+                syllune::latency_cmd::run_latency(latency_args).await
             }
         },
     };

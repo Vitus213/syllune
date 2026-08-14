@@ -1,0 +1,138 @@
+{
+  "trials": 3,
+  "failed_trials": 0,
+  "excluded_non_quick": 0,
+  "unverified": true,
+  "passed": false,
+  "first_partial_p95": 1.0470397274,
+  "stop_to_final_p50": 0.23778280400000007,
+  "stop_to_inject_p99": 0.39833647140000045,
+  "thresholds": {
+    "first_partial_p95_seconds": 1.0,
+    "stop_to_final_p50_seconds": 0.6,
+    "stop_to_inject_p99_seconds": 1.0,
+    "min_trials": 100
+  },
+  "samples": [
+    {
+      "id": 0,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.148999802
+        ],
+        [
+          "UtteranceStart",
+          0.148999872
+        ],
+        [
+          "FirstPartial",
+          1.2602049530000001
+        ],
+        [
+          "Stop",
+          4.187429287
+        ],
+        [
+          "FinishSent",
+          4.187435277
+        ],
+        [
+          "FinalReceived",
+          4.425212091
+        ],
+        [
+          "InjectionComplete",
+          4.493852105
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 1,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.171296649
+        ],
+        [
+          "UtteranceStart",
+          0.171296779
+        ],
+        [
+          "FirstPartial",
+          0.631998377
+        ],
+        [
+          "Stop",
+          4.209502741
+        ],
+        [
+          "FinishSent",
+          4.209509371
+        ],
+        [
+          "FinalReceived",
+          4.493171821
+        ],
+        [
+          "InjectionComplete",
+          4.609651748
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 2,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.179671602
+        ],
+        [
+          "UtteranceStart",
+          0.179671742
+        ],
+        [
+          "FirstPartial",
+          0.649223287
+        ],
+        [
+          "Stop",
+          6.101958054
+        ],
+        [
+          "FinishSent",
+          6.101968774
+        ],
+        [
+          "FinalReceived",
+          6.285828023
+        ],
+        [
+          "InjectionComplete",
+          6.411480281
+        ]
+      ],
+      "success": true,
+      "error": null
+    }
+  ]
+}

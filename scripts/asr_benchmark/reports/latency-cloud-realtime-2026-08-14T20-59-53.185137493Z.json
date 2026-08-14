@@ -1,0 +1,3618 @@
+{
+  "trials": 100,
+  "failed_trials": 0,
+  "excluded_non_quick": 0,
+  "unverified": false,
+  "passed": false,
+  "first_partial_p95": 1.38640480405,
+  "stop_to_final_p50": 0.2552307319999998,
+  "stop_to_inject_p99": 0.5850871260400002,
+  "thresholds": {
+    "first_partial_p95_seconds": 1.0,
+    "stop_to_final_p50_seconds": 0.6,
+    "stop_to_inject_p99_seconds": 1.0,
+    "min_trials": 100
+  },
+  "samples": [
+    {
+      "id": 0,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.143336464
+        ],
+        [
+          "FirstPartial",
+          1.337663798
+        ],
+        [
+          "Stop",
+          4.433008449
+        ],
+        [
+          "FinishSent",
+          4.433013058
+        ],
+        [
+          "FinalReceived",
+          4.675999787
+        ],
+        [
+          "InjectionComplete",
+          4.745376748
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 1,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.21903411
+        ],
+        [
+          "FirstPartial",
+          0.747791027
+        ],
+        [
+          "Stop",
+          4.506570632
+        ],
+        [
+          "FinishSent",
+          4.506581721
+        ],
+        [
+          "FinalReceived",
+          4.778255819
+        ],
+        [
+          "InjectionComplete",
+          4.894317891
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 2,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.151369771
+        ],
+        [
+          "FirstPartial",
+          0.678708745
+        ],
+        [
+          "Stop",
+          6.444044855
+        ],
+        [
+          "FinishSent",
+          6.444053305
+        ],
+        [
+          "FinalReceived",
+          6.643954317
+        ],
+        [
+          "InjectionComplete",
+          6.769104514
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 3,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.161482925
+        ],
+        [
+          "FirstPartial",
+          0.723669527
+        ],
+        [
+          "Stop",
+          5.572617576
+        ],
+        [
+          "FinishSent",
+          5.572622246
+        ],
+        [
+          "FinalReceived",
+          5.853593429
+        ],
+        [
+          "InjectionComplete",
+          5.952242154
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 4,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.163796372
+        ],
+        [
+          "FirstPartial",
+          0.690031172
+        ],
+        [
+          "Stop",
+          5.233153188
+        ],
+        [
+          "FinishSent",
+          5.233158038
+        ],
+        [
+          "FinalReceived",
+          5.493545028
+        ],
+        [
+          "InjectionComplete",
+          5.589193025
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 5,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.144278518
+        ],
+        [
+          "FirstPartial",
+          0.672479799
+        ],
+        [
+          "Stop",
+          5.031028038
+        ],
+        [
+          "FinishSent",
+          5.031033828
+        ],
+        [
+          "FinalReceived",
+          5.266852926
+        ],
+        [
+          "InjectionComplete",
+          5.357997341
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 6,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.14216915
+        ],
+        [
+          "FirstPartial",
+          0.634772966
+        ],
+        [
+          "Stop",
+          10.663103033
+        ],
+        [
+          "FinishSent",
+          10.663108743
+        ],
+        [
+          "FinalReceived",
+          10.990261596
+        ],
+        [
+          "InjectionComplete",
+          11.193148751
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 7,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.153125706
+        ],
+        [
+          "FirstPartial",
+          0.679531672
+        ],
+        [
+          "Stop",
+          7.43232423
+        ],
+        [
+          "FinishSent",
+          7.4323298
+        ],
+        [
+          "FinalReceived",
+          7.61663218
+        ],
+        [
+          "InjectionComplete",
+          7.724540771
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 8,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.218854249
+        ],
+        [
+          "FirstPartial",
+          0.746502764
+        ],
+        [
+          "Stop",
+          6.619797102
+        ],
+        [
+          "FinishSent",
+          6.619802432
+        ],
+        [
+          "FinalReceived",
+          6.795048298
+        ],
+        [
+          "InjectionComplete",
+          6.937337699
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 9,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.216618073
+        ],
+        [
+          "FirstPartial",
+          0.780241855
+        ],
+        [
+          "Stop",
+          6.865653059
+        ],
+        [
+          "FinishSent",
+          6.865657659
+        ],
+        [
+          "FinalReceived",
+          7.184621533
+        ],
+        [
+          "InjectionComplete",
+          7.326909864
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 10,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.157141276
+        ],
+        [
+          "FirstPartial",
+          1.036311251
+        ],
+        [
+          "Stop",
+          5.327932319
+        ],
+        [
+          "FinishSent",
+          5.327938119
+        ],
+        [
+          "FinalReceived",
+          5.559704106
+        ],
+        [
+          "InjectionComplete",
+          5.671704595
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 11,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.165531869
+        ],
+        [
+          "FirstPartial",
+          0.695510997
+        ],
+        [
+          "Stop",
+          7.795736488
+        ],
+        [
+          "FinishSent",
+          7.795743968
+        ],
+        [
+          "FinalReceived",
+          8.067543447
+        ],
+        [
+          "InjectionComplete",
+          8.213993427
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 12,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.169872024
+        ],
+        [
+          "FirstPartial",
+          1.400991219
+        ],
+        [
+          "Stop",
+          4.460993576
+        ],
+        [
+          "FinishSent",
+          4.460999206
+        ],
+        [
+          "FinalReceived",
+          4.7070603349999995
+        ],
+        [
+          "InjectionComplete",
+          4.775578739
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 13,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.164098206
+        ],
+        [
+          "FirstPartial",
+          0.65658335
+        ],
+        [
+          "Stop",
+          4.453531557
+        ],
+        [
+          "FinishSent",
+          4.453535837
+        ],
+        [
+          "FinalReceived",
+          4.728905
+        ],
+        [
+          "InjectionComplete",
+          4.845074217
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 14,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.201547415
+        ],
+        [
+          "FirstPartial",
+          0.798477601
+        ],
+        [
+          "Stop",
+          6.492947249
+        ],
+        [
+          "FinishSent",
+          6.492953689
+        ],
+        [
+          "FinalReceived",
+          6.726980735
+        ],
+        [
+          "InjectionComplete",
+          6.852765272
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 15,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.152017263
+        ],
+        [
+          "FirstPartial",
+          0.680070219
+        ],
+        [
+          "Stop",
+          5.566020141
+        ],
+        [
+          "FinishSent",
+          5.566025501
+        ],
+        [
+          "FinalReceived",
+          5.90430983
+        ],
+        [
+          "InjectionComplete",
+          6.003035629
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 16,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.143035908
+        ],
+        [
+          "FirstPartial",
+          0.670479382
+        ],
+        [
+          "Stop",
+          5.204828411
+        ],
+        [
+          "FinishSent",
+          5.204834811
+        ],
+        [
+          "FinalReceived",
+          5.506623582
+        ],
+        [
+          "InjectionComplete",
+          5.6010928060000005
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 17,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.188951108
+        ],
+        [
+          "FirstPartial",
+          0.786509503
+        ],
+        [
+          "Stop",
+          5.078551207
+        ],
+        [
+          "FinishSent",
+          5.078559367
+        ],
+        [
+          "FinalReceived",
+          5.308800255
+        ],
+        [
+          "InjectionComplete",
+          5.399195102
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 18,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.167567882
+        ],
+        [
+          "FirstPartial",
+          0.695814952
+        ],
+        [
+          "Stop",
+          10.685058762
+        ],
+        [
+          "FinishSent",
+          10.685065812
+        ],
+        [
+          "FinalReceived",
+          11.036224052
+        ],
+        [
+          "InjectionComplete",
+          11.239491233
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 19,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.136431298
+        ],
+        [
+          "FirstPartial",
+          0.663535493
+        ],
+        [
+          "Stop",
+          7.413223346
+        ],
+        [
+          "FinishSent",
+          7.413229076
+        ],
+        [
+          "FinalReceived",
+          7.634598079
+        ],
+        [
+          "InjectionComplete",
+          7.742186868
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 20,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.15260062
+        ],
+        [
+          "FirstPartial",
+          0.749946736
+        ],
+        [
+          "Stop",
+          6.549411808
+        ],
+        [
+          "FinishSent",
+          6.549416558
+        ],
+        [
+          "FinalReceived",
+          6.730538941
+        ],
+        [
+          "InjectionComplete",
+          6.8724290230000005
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 21,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.199167745
+        ],
+        [
+          "FirstPartial",
+          0.725921308
+        ],
+        [
+          "Stop",
+          6.842544359
+        ],
+        [
+          "FinishSent",
+          6.842549459
+        ],
+        [
+          "FinalReceived",
+          7.116481516
+        ],
+        [
+          "InjectionComplete",
+          7.259867413
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 22,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.199554862
+        ],
+        [
+          "FirstPartial",
+          0.691558299
+        ],
+        [
+          "Stop",
+          5.367585661
+        ],
+        [
+          "FinishSent",
+          5.367590051
+        ],
+        [
+          "FinalReceived",
+          5.567851496
+        ],
+        [
+          "InjectionComplete",
+          5.67984357
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 23,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.1507957
+        ],
+        [
+          "FirstPartial",
+          0.681001841
+        ],
+        [
+          "Stop",
+          7.787079788
+        ],
+        [
+          "FinishSent",
+          7.787085388
+        ],
+        [
+          "FinalReceived",
+          7.979660295
+        ],
+        [
+          "InjectionComplete",
+          8.125698325
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 24,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.253234015
+        ],
+        [
+          "FirstPartial",
+          1.519608319
+        ],
+        [
+          "Stop",
+          4.541673449
+        ],
+        [
+          "FinishSent",
+          4.5416801190000005
+        ],
+        [
+          "FinalReceived",
+          4.827448607
+        ],
+        [
+          "InjectionComplete",
+          4.8963339999999995
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 25,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.14322819
+        ],
+        [
+          "FirstPartial",
+          0.704200354
+        ],
+        [
+          "Stop",
+          4.429976041
+        ],
+        [
+          "FinishSent",
+          4.429981401
+        ],
+        [
+          "FinalReceived",
+          4.791688989
+        ],
+        [
+          "InjectionComplete",
+          4.9087243019999995
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 26,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.194164181
+        ],
+        [
+          "FirstPartial",
+          0.720690205
+        ],
+        [
+          "Stop",
+          6.489874316
+        ],
+        [
+          "FinishSent",
+          6.489880676
+        ],
+        [
+          "FinalReceived",
+          6.661023497
+        ],
+        [
+          "InjectionComplete",
+          6.78673354
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 27,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.161211204
+        ],
+        [
+          "FirstPartial",
+          0.721911374
+        ],
+        [
+          "Stop",
+          5.574315514
+        ],
+        [
+          "FinishSent",
+          5.574320704
+        ],
+        [
+          "FinalReceived",
+          5.863873054
+        ],
+        [
+          "InjectionComplete",
+          5.963665807
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 28,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.158664141
+        ],
+        [
+          "FirstPartial",
+          0.686484575
+        ],
+        [
+          "Stop",
+          5.221299587
+        ],
+        [
+          "FinishSent",
+          5.221308057
+        ],
+        [
+          "FinalReceived",
+          5.513608539
+        ],
+        [
+          "InjectionComplete",
+          5.6089889280000005
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 29,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.159219086
+        ],
+        [
+          "FirstPartial",
+          0.685934193
+        ],
+        [
+          "Stop",
+          5.050463919
+        ],
+        [
+          "FinishSent",
+          5.050468249
+        ],
+        [
+          "FinalReceived",
+          5.313502377
+        ],
+        [
+          "InjectionComplete",
+          5.40459939
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 30,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.166610029
+        ],
+        [
+          "FirstPartial",
+          0.834483312
+        ],
+        [
+          "Stop",
+          10.676696059
+        ],
+        [
+          "FinishSent",
+          10.676701279
+        ],
+        [
+          "FinalReceived",
+          10.989156205
+        ],
+        [
+          "InjectionComplete",
+          11.191568453
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 31,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.167347302
+        ],
+        [
+          "FirstPartial",
+          0.730213609
+        ],
+        [
+          "Stop",
+          7.446504308
+        ],
+        [
+          "FinishSent",
+          7.446511318
+        ],
+        [
+          "FinalReceived",
+          7.675325523
+        ],
+        [
+          "InjectionComplete",
+          7.783360892
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 32,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.199795596
+        ],
+        [
+          "FirstPartial",
+          0.729664557
+        ],
+        [
+          "Stop",
+          6.604356225
+        ],
+        [
+          "FinishSent",
+          6.604362575
+        ],
+        [
+          "FinalReceived",
+          6.795498971
+        ],
+        [
+          "InjectionComplete",
+          6.937454708
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 33,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.199842117
+        ],
+        [
+          "FirstPartial",
+          0.728799689
+        ],
+        [
+          "Stop",
+          6.845905841
+        ],
+        [
+          "FinishSent",
+          6.84590945
+        ],
+        [
+          "FinalReceived",
+          7.118403454
+        ],
+        [
+          "InjectionComplete",
+          7.26048966
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 34,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.150240292
+        ],
+        [
+          "FirstPartial",
+          0.784712801
+        ],
+        [
+          "Stop",
+          5.321344172
+        ],
+        [
+          "FinishSent",
+          5.321349892
+        ],
+        [
+          "FinalReceived",
+          5.516436629
+        ],
+        [
+          "InjectionComplete",
+          5.62822407
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 35,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.157729894
+        ],
+        [
+          "FirstPartial",
+          0.685357723
+        ],
+        [
+          "Stop",
+          7.789348938
+        ],
+        [
+          "FinishSent",
+          7.789355058
+        ],
+        [
+          "FinalReceived",
+          7.99940524
+        ],
+        [
+          "InjectionComplete",
+          8.146918002
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 36,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.152959695
+        ],
+        [
+          "FirstPartial",
+          1.3856370980000001
+        ],
+        [
+          "Stop",
+          4.446368394
+        ],
+        [
+          "FinishSent",
+          4.446373764
+        ],
+        [
+          "FinalReceived",
+          4.708804454
+        ],
+        [
+          "InjectionComplete",
+          4.777792039
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 37,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.175032796
+        ],
+        [
+          "FirstPartial",
+          0.667486503
+        ],
+        [
+          "Stop",
+          4.464897819
+        ],
+        [
+          "FinishSent",
+          4.464904169
+        ],
+        [
+          "FinalReceived",
+          4.6988858350000005
+        ],
+        [
+          "InjectionComplete",
+          4.816281549
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 38,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.142572463
+        ],
+        [
+          "FirstPartial",
+          0.670130736
+        ],
+        [
+          "Stop",
+          6.434964682
+        ],
+        [
+          "FinishSent",
+          6.434970821
+        ],
+        [
+          "FinalReceived",
+          6.651741686
+        ],
+        [
+          "InjectionComplete",
+          6.776936299
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 39,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.140626503
+        ],
+        [
+          "FirstPartial",
+          0.704044207
+        ],
+        [
+          "Stop",
+          5.555443379
+        ],
+        [
+          "FinishSent",
+          5.555447919
+        ],
+        [
+          "FinalReceived",
+          5.845298757
+        ],
+        [
+          "InjectionComplete",
+          5.944111224
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 40,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.154060044
+        ],
+        [
+          "FirstPartial",
+          0.680815069
+        ],
+        [
+          "Stop",
+          5.217083866
+        ],
+        [
+          "FinishSent",
+          5.217089326
+        ],
+        [
+          "FinalReceived",
+          5.500459262
+        ],
+        [
+          "InjectionComplete",
+          5.595064342
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 41,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.138026731
+        ],
+        [
+          "FirstPartial",
+          0.701538547
+        ],
+        [
+          "Stop",
+          5.02678147
+        ],
+        [
+          "FinishSent",
+          5.02678969
+        ],
+        [
+          "FinalReceived",
+          5.364346326
+        ],
+        [
+          "InjectionComplete",
+          5.454459053
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 42,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.198841632
+        ],
+        [
+          "FirstPartial",
+          0.725754418
+        ],
+        [
+          "Stop",
+          10.716567203
+        ],
+        [
+          "FinishSent",
+          10.716572103
+        ],
+        [
+          "FinalReceived",
+          10.999494996
+        ],
+        [
+          "InjectionComplete",
+          11.202219338
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 43,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.153883128
+        ],
+        [
+          "FirstPartial",
+          0.681297881
+        ],
+        [
+          "Stop",
+          7.434161893
+        ],
+        [
+          "FinishSent",
+          7.434173603
+        ],
+        [
+          "FinalReceived",
+          7.6068454469999995
+        ],
+        [
+          "InjectionComplete",
+          7.714680862
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 44,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.1526712
+        ],
+        [
+          "FirstPartial",
+          0.678565281
+        ],
+        [
+          "Stop",
+          6.555784838
+        ],
+        [
+          "FinishSent",
+          6.5557906280000005
+        ],
+        [
+          "FinalReceived",
+          6.729980357
+        ],
+        [
+          "InjectionComplete",
+          6.871991618
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 45,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.191412001
+        ],
+        [
+          "FirstPartial",
+          0.754412629
+        ],
+        [
+          "Stop",
+          6.833924533
+        ],
+        [
+          "FinishSent",
+          6.833935883
+        ],
+        [
+          "FinalReceived",
+          7.138283237
+        ],
+        [
+          "InjectionComplete",
+          7.280000102
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 46,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.126762829
+        ],
+        [
+          "FirstPartial",
+          0.654668602
+        ],
+        [
+          "Stop",
+          5.297174224
+        ],
+        [
+          "FinishSent",
+          5.297180403
+        ],
+        [
+          "FinalReceived",
+          5.544650056
+        ],
+        [
+          "InjectionComplete",
+          5.656899876
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 47,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.155050847
+        ],
+        [
+          "FirstPartial",
+          0.682890652
+        ],
+        [
+          "Stop",
+          7.788415593
+        ],
+        [
+          "FinishSent",
+          7.788420993
+        ],
+        [
+          "FinalReceived",
+          7.987912582
+        ],
+        [
+          "InjectionComplete",
+          8.134600687
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 48,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.158952718
+        ],
+        [
+          "FirstPartial",
+          1.425437382
+        ],
+        [
+          "Stop",
+          4.451106353
+        ],
+        [
+          "FinishSent",
+          4.451111132
+        ],
+        [
+          "FinalReceived",
+          4.708255836
+        ],
+        [
+          "InjectionComplete",
+          4.777609909
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 49,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.15485625
+        ],
+        [
+          "FirstPartial",
+          0.683700567
+        ],
+        [
+          "Stop",
+          4.448677896
+        ],
+        [
+          "FinishSent",
+          4.448683626
+        ],
+        [
+          "FinalReceived",
+          4.916151998
+        ],
+        [
+          "InjectionComplete",
+          5.032961461
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 50,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.144921213
+        ],
+        [
+          "FirstPartial",
+          0.636658325
+        ],
+        [
+          "Stop",
+          6.435693886
+        ],
+        [
+          "FinishSent",
+          6.435699066
+        ],
+        [
+          "FinalReceived",
+          6.609748069
+        ],
+        [
+          "InjectionComplete",
+          6.735409391
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 51,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.159031688
+        ],
+        [
+          "FirstPartial",
+          0.687026746
+        ],
+        [
+          "Stop",
+          5.57561039
+        ],
+        [
+          "FinishSent",
+          5.57561486
+        ],
+        [
+          "FinalReceived",
+          5.880560662
+        ],
+        [
+          "InjectionComplete",
+          5.979874077
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 52,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.15105599
+        ],
+        [
+          "FirstPartial",
+          0.679537894
+        ],
+        [
+          "Stop",
+          5.216041033
+        ],
+        [
+          "FinishSent",
+          5.216048993
+        ],
+        [
+          "FinalReceived",
+          5.4913902310000005
+        ],
+        [
+          "InjectionComplete",
+          5.586008184
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 53,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.195066507
+        ],
+        [
+          "FirstPartial",
+          0.722852359
+        ],
+        [
+          "Stop",
+          5.086701851
+        ],
+        [
+          "FinishSent",
+          5.08670658
+        ],
+        [
+          "FinalReceived",
+          5.3373086149999995
+        ],
+        [
+          "InjectionComplete",
+          5.427646162
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 54,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.150008982
+        ],
+        [
+          "FirstPartial",
+          0.676768726
+        ],
+        [
+          "Stop",
+          10.65989323
+        ],
+        [
+          "FinishSent",
+          10.65989901
+        ],
+        [
+          "FinalReceived",
+          10.92631987
+        ],
+        [
+          "InjectionComplete",
+          11.128458665
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 55,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.198891588
+        ],
+        [
+          "FirstPartial",
+          0.830124237
+        ],
+        [
+          "Stop",
+          7.476953946
+        ],
+        [
+          "FinishSent",
+          7.476963146
+        ],
+        [
+          "FinalReceived",
+          7.670371341
+        ],
+        [
+          "InjectionComplete",
+          7.778213779
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 56,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.21144937
+        ],
+        [
+          "FirstPartial",
+          0.739369485
+        ],
+        [
+          "Stop",
+          6.612730269
+        ],
+        [
+          "FinishSent",
+          6.612736749
+        ],
+        [
+          "FinalReceived",
+          6.828658593
+        ],
+        [
+          "InjectionComplete",
+          6.971037575
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 57,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.152053512
+        ],
+        [
+          "FirstPartial",
+          0.713958808
+        ],
+        [
+          "Stop",
+          6.794344462
+        ],
+        [
+          "FinishSent",
+          6.794349512
+        ],
+        [
+          "FinalReceived",
+          7.316135883
+        ],
+        [
+          "InjectionComplete",
+          7.458984131
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 58,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.144626099
+        ],
+        [
+          "FirstPartial",
+          0.637757226
+        ],
+        [
+          "Stop",
+          5.310797528
+        ],
+        [
+          "FinishSent",
+          5.310803788
+        ],
+        [
+          "FinalReceived",
+          5.701134975
+        ],
+        [
+          "InjectionComplete",
+          5.812688015
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 59,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.158794213
+        ],
+        [
+          "FirstPartial",
+          0.687756442
+        ],
+        [
+          "Stop",
+          7.793854204
+        ],
+        [
+          "FinishSent",
+          7.793860653
+        ],
+        [
+          "FinalReceived",
+          7.992486647
+        ],
+        [
+          "InjectionComplete",
+          8.138501402
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 60,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.150788277
+        ],
+        [
+          "FirstPartial",
+          1.347653355
+        ],
+        [
+          "Stop",
+          4.44348207
+        ],
+        [
+          "FinishSent",
+          4.44348772
+        ],
+        [
+          "FinalReceived",
+          4.696503473
+        ],
+        [
+          "InjectionComplete",
+          4.765304144
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 61,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.134521734
+        ],
+        [
+          "FirstPartial",
+          0.66294705
+        ],
+        [
+          "Stop",
+          4.4285442
+        ],
+        [
+          "FinishSent",
+          4.42854981
+        ],
+        [
+          "FinalReceived",
+          4.684460674
+        ],
+        [
+          "InjectionComplete",
+          4.800593568
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 62,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.147857187
+        ],
+        [
+          "FirstPartial",
+          0.675578941
+        ],
+        [
+          "Stop",
+          6.443613613
+        ],
+        [
+          "FinishSent",
+          6.443617823
+        ],
+        [
+          "FinalReceived",
+          6.642280906
+        ],
+        [
+          "InjectionComplete",
+          6.767435828
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 63,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.197314968
+        ],
+        [
+          "FirstPartial",
+          0.761105562
+        ],
+        [
+          "Stop",
+          5.612303407
+        ],
+        [
+          "FinishSent",
+          5.612315697
+        ],
+        [
+          "FinalReceived",
+          5.972888624
+        ],
+        [
+          "InjectionComplete",
+          6.072024403
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 64,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.167981911
+        ],
+        [
+          "FirstPartial",
+          0.69441057
+        ],
+        [
+          "Stop",
+          5.233175322
+        ],
+        [
+          "FinishSent",
+          5.233180102
+        ],
+        [
+          "FinalReceived",
+          5.560299204
+        ],
+        [
+          "InjectionComplete",
+          5.655133378
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 65,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.149197044
+        ],
+        [
+          "FirstPartial",
+          0.678088479
+        ],
+        [
+          "Stop",
+          5.043004527
+        ],
+        [
+          "FinishSent",
+          5.043009557
+        ],
+        [
+          "FinalReceived",
+          5.290641348
+        ],
+        [
+          "InjectionComplete",
+          5.38085146
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 66,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.140755291
+        ],
+        [
+          "FirstPartial",
+          0.673904693
+        ],
+        [
+          "Stop",
+          10.666638465
+        ],
+        [
+          "FinishSent",
+          10.666642685
+        ],
+        [
+          "FinalReceived",
+          10.973101112
+        ],
+        [
+          "InjectionComplete",
+          11.175223712
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 67,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.214695171
+        ],
+        [
+          "FirstPartial",
+          0.710088773
+        ],
+        [
+          "Stop",
+          7.493529332
+        ],
+        [
+          "FinishSent",
+          7.493534332
+        ],
+        [
+          "FinalReceived",
+          7.695828961
+        ],
+        [
+          "InjectionComplete",
+          7.803784671
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 68,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.199848344
+        ],
+        [
+          "FirstPartial",
+          0.72808309
+        ],
+        [
+          "Stop",
+          6.601929471
+        ],
+        [
+          "FinishSent",
+          6.601934071
+        ],
+        [
+          "FinalReceived",
+          6.786044827
+        ],
+        [
+          "InjectionComplete",
+          6.92870236
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 69,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.147540572
+        ],
+        [
+          "FirstPartial",
+          0.676317004
+        ],
+        [
+          "Stop",
+          6.799637801
+        ],
+        [
+          "FinishSent",
+          6.7996434610000005
+        ],
+        [
+          "FinalReceived",
+          7.089291722
+        ],
+        [
+          "InjectionComplete",
+          7.231322452
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 70,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.150286414
+        ],
+        [
+          "FirstPartial",
+          0.711716251
+        ],
+        [
+          "Stop",
+          5.322238795
+        ],
+        [
+          "FinishSent",
+          5.322249855
+        ],
+        [
+          "FinalReceived",
+          5.542024745
+        ],
+        [
+          "InjectionComplete",
+          5.653799246
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 71,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.147010779
+        ],
+        [
+          "FirstPartial",
+          0.673971641
+        ],
+        [
+          "Stop",
+          7.775098119
+        ],
+        [
+          "FinishSent",
+          7.775102929
+        ],
+        [
+          "FinalReceived",
+          8.116840006
+        ],
+        [
+          "InjectionComplete",
+          8.264232371
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 72,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.213899841
+        ],
+        [
+          "FirstPartial",
+          1.445335663
+        ],
+        [
+          "Stop",
+          4.507532609
+        ],
+        [
+          "FinishSent",
+          4.507537709
+        ],
+        [
+          "FinalReceived",
+          4.784073197
+        ],
+        [
+          "InjectionComplete",
+          4.853063628
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 73,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.217139158
+        ],
+        [
+          "FirstPartial",
+          0.745153762
+        ],
+        [
+          "Stop",
+          4.505993801
+        ],
+        [
+          "FinishSent",
+          4.505999461
+        ],
+        [
+          "FinalReceived",
+          4.78049476
+        ],
+        [
+          "InjectionComplete",
+          4.897121762
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 74,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.188846819
+        ],
+        [
+          "FirstPartial",
+          0.717095651
+        ],
+        [
+          "Stop",
+          6.476270733
+        ],
+        [
+          "FinishSent",
+          6.476278382
+        ],
+        [
+          "FinalReceived",
+          6.675695934
+        ],
+        [
+          "InjectionComplete",
+          6.800452852
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 75,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.158786328
+        ],
+        [
+          "FirstPartial",
+          0.862030083
+        ],
+        [
+          "Stop",
+          5.578826694
+        ],
+        [
+          "FinishSent",
+          5.578832184
+        ],
+        [
+          "FinalReceived",
+          5.87417123
+        ],
+        [
+          "InjectionComplete",
+          5.973059354
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 76,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.149329246
+        ],
+        [
+          "FirstPartial",
+          0.676001926
+        ],
+        [
+          "Stop",
+          5.213734674
+        ],
+        [
+          "FinishSent",
+          5.213741154
+        ],
+        [
+          "FinalReceived",
+          5.486535052
+        ],
+        [
+          "InjectionComplete",
+          5.581466527
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 77,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.189741961
+        ],
+        [
+          "FirstPartial",
+          0.718943805
+        ],
+        [
+          "Stop",
+          5.080333591
+        ],
+        [
+          "FinishSent",
+          5.080337781
+        ],
+        [
+          "FinalReceived",
+          5.325884939
+        ],
+        [
+          "InjectionComplete",
+          5.416157052
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 78,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.193820029
+        ],
+        [
+          "FirstPartial",
+          0.72349547
+        ],
+        [
+          "Stop",
+          10.715226831
+        ],
+        [
+          "FinishSent",
+          10.715234581
+        ],
+        [
+          "FinalReceived",
+          10.994328226
+        ],
+        [
+          "InjectionComplete",
+          11.196662948
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 79,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.178738835
+        ],
+        [
+          "FirstPartial",
+          0.741091722
+        ],
+        [
+          "Stop",
+          7.453051767
+        ],
+        [
+          "FinishSent",
+          7.453057737
+        ],
+        [
+          "FinalReceived",
+          7.6621628699999995
+        ],
+        [
+          "InjectionComplete",
+          7.771203041
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 80,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.145247489
+        ],
+        [
+          "FirstPartial",
+          0.636613185
+        ],
+        [
+          "Stop",
+          6.547032961
+        ],
+        [
+          "FinishSent",
+          6.54704224
+        ],
+        [
+          "FinalReceived",
+          6.698290948
+        ],
+        [
+          "InjectionComplete",
+          6.84040283
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 81,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.15201088
+        ],
+        [
+          "FirstPartial",
+          0.713602257
+        ],
+        [
+          "Stop",
+          6.797009098
+        ],
+        [
+          "FinishSent",
+          6.797015748
+        ],
+        [
+          "FinalReceived",
+          7.1232372999999995
+        ],
+        [
+          "InjectionComplete",
+          7.264924656
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 82,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.172334762
+        ],
+        [
+          "FirstPartial",
+          0.698011117
+        ],
+        [
+          "Stop",
+          5.340362014
+        ],
+        [
+          "FinishSent",
+          5.340366904
+        ],
+        [
+          "FinalReceived",
+          5.557427537
+        ],
+        [
+          "InjectionComplete",
+          5.669434138
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 83,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.14233663
+        ],
+        [
+          "FirstPartial",
+          0.668436712
+        ],
+        [
+          "Stop",
+          7.7722362149999995
+        ],
+        [
+          "FinishSent",
+          7.772244665
+        ],
+        [
+          "FinalReceived",
+          7.974797757
+        ],
+        [
+          "InjectionComplete",
+          8.121404783
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 84,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.195651873
+        ],
+        [
+          "FirstPartial",
+          1.423621727
+        ],
+        [
+          "Stop",
+          4.478678169
+        ],
+        [
+          "FinishSent",
+          4.478683099
+        ],
+        [
+          "FinalReceived",
+          4.682124842
+        ],
+        [
+          "InjectionComplete",
+          4.751080665
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 85,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.15694839
+        ],
+        [
+          "FirstPartial",
+          0.6834208
+        ],
+        [
+          "Stop",
+          4.446615563
+        ],
+        [
+          "FinishSent",
+          4.446621263
+        ],
+        [
+          "FinalReceived",
+          4.716960401
+        ],
+        [
+          "InjectionComplete",
+          4.833560145
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 86,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.166806799
+        ],
+        [
+          "FirstPartial",
+          0.728480588
+        ],
+        [
+          "Stop",
+          6.45723499
+        ],
+        [
+          "FinishSent",
+          6.457248129
+        ],
+        [
+          "FinalReceived",
+          6.67749911
+        ],
+        [
+          "InjectionComplete",
+          6.802073733
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 87,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.20187091
+        ],
+        [
+          "FirstPartial",
+          0.728964455
+        ],
+        [
+          "Stop",
+          5.620159333
+        ],
+        [
+          "FinishSent",
+          5.620168482
+        ],
+        [
+          "FinalReceived",
+          5.874704323
+        ],
+        [
+          "InjectionComplete",
+          5.973875356
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 88,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.152049451
+        ],
+        [
+          "FirstPartial",
+          0.678753971
+        ],
+        [
+          "Stop",
+          5.212885325
+        ],
+        [
+          "FinishSent",
+          5.212891285
+        ],
+        [
+          "FinalReceived",
+          5.493970704
+        ],
+        [
+          "InjectionComplete",
+          5.588646503
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 89,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.199487145
+        ],
+        [
+          "FirstPartial",
+          0.727020127
+        ],
+        [
+          "Stop",
+          5.089868283
+        ],
+        [
+          "FinishSent",
+          5.089878243
+        ],
+        [
+          "FinalReceived",
+          5.340231977
+        ],
+        [
+          "InjectionComplete",
+          5.430452622
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 90,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.165351435
+        ],
+        [
+          "FirstPartial",
+          0.694756988
+        ],
+        [
+          "Stop",
+          10.689818148
+        ],
+        [
+          "FinishSent",
+          10.689826048
+        ],
+        [
+          "FinalReceived",
+          11.0389596
+        ],
+        [
+          "InjectionComplete",
+          11.24097709
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 91,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.153745004
+        ],
+        [
+          "FirstPartial",
+          0.753442388
+        ],
+        [
+          "Stop",
+          7.440866081
+        ],
+        [
+          "FinishSent",
+          7.440877891
+        ],
+        [
+          "FinalReceived",
+          7.638952072
+        ],
+        [
+          "InjectionComplete",
+          7.746741277
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 92,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.171939579
+        ],
+        [
+          "FirstPartial",
+          0.733553874
+        ],
+        [
+          "Stop",
+          6.572490723
+        ],
+        [
+          "FinishSent",
+          6.572496383
+        ],
+        [
+          "FinalReceived",
+          6.79137014
+        ],
+        [
+          "InjectionComplete",
+          6.933213307
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 93,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.219227894
+        ],
+        [
+          "FirstPartial",
+          0.748087436
+        ],
+        [
+          "Stop",
+          6.862443622
+        ],
+        [
+          "FinishSent",
+          6.862448562
+        ],
+        [
+          "FinalReceived",
+          7.189303605
+        ],
+        [
+          "InjectionComplete",
+          7.330969413
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 94,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.19631482
+        ],
+        [
+          "FirstPartial",
+          0.688795635
+        ],
+        [
+          "Stop",
+          5.370307605
+        ],
+        [
+          "FinishSent",
+          5.370312305
+        ],
+        [
+          "FinalReceived",
+          5.569727113
+        ],
+        [
+          "InjectionComplete",
+          5.681380769
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 95,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.155183951
+        ],
+        [
+          "FirstPartial",
+          0.718422482
+        ],
+        [
+          "Stop",
+          7.7865569390000005
+        ],
+        [
+          "FinishSent",
+          7.786561998
+        ],
+        [
+          "FinalReceived",
+          7.997180962
+        ],
+        [
+          "InjectionComplete",
+          8.143531473
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 96,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.148803436
+        ],
+        [
+          "FirstPartial",
+          1.3786310720000001
+        ],
+        [
+          "Stop",
+          4.440930195
+        ],
+        [
+          "FinishSent",
+          4.440935795
+        ],
+        [
+          "FinalReceived",
+          4.722275704
+        ],
+        [
+          "InjectionComplete",
+          4.791647504
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 97,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.160987581
+        ],
+        [
+          "FirstPartial",
+          0.690269512
+        ],
+        [
+          "Stop",
+          4.45268155
+        ],
+        [
+          "FinishSent",
+          4.45268644
+        ],
+        [
+          "FinalReceived",
+          4.732363956
+        ],
+        [
+          "InjectionComplete",
+          4.849578376
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 98,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.15035727
+        ],
+        [
+          "FirstPartial",
+          0.678180396
+        ],
+        [
+          "Stop",
+          6.446476602
+        ],
+        [
+          "FinishSent",
+          6.446481522
+        ],
+        [
+          "FinalReceived",
+          6.627419691
+        ],
+        [
+          "InjectionComplete",
+          6.752297246
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 99,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.13726492
+        ],
+        [
+          "FirstPartial",
+          0.700244276
+        ],
+        [
+          "Stop",
+          5.552101059
+        ],
+        [
+          "FinishSent",
+          5.552105879
+        ],
+        [
+          "FinalReceived",
+          5.827097038
+        ],
+        [
+          "InjectionComplete",
+          5.925923135
+        ]
+      ],
+      "success": true,
+      "error": null
+    }
+  ]
+}

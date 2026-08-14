@@ -9,6 +9,8 @@ pub mod daemon;
 pub mod coordinator;
 pub mod history;
 pub mod history_cmd;
+pub mod latency;
+pub mod latency_cmd;
 pub mod local_asr;
 pub mod mode_cmd;
 pub mod models;

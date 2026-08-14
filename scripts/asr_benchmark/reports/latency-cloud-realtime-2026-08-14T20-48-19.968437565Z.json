@@ -1,0 +1,82 @@
+{
+  "trials": 2,
+  "failed_trials": 0,
+  "excluded_non_quick": 0,
+  "unverified": true,
+  "passed": false,
+  "first_partial_p95": 1.3887825867999999,
+  "stop_to_final_p50": 0.29420475800000023,
+  "stop_to_inject_p99": null,
+  "thresholds": {
+    "first_partial_p95_seconds": 1.0,
+    "stop_to_final_p50_seconds": 0.6,
+    "stop_to_inject_p99_seconds": 1.0,
+    "min_trials": 100
+  },
+  "samples": [
+    {
+      "id": 0,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.193628801
+        ],
+        [
+          "FirstPartial",
+          1.422650727
+        ],
+        [
+          "Stop",
+          4.480241959
+        ],
+        [
+          "FinishSent",
+          4.480247819
+        ],
+        [
+          "FinalReceived",
+          4.721195552
+        ]
+      ],
+      "success": true,
+      "error": null
+    },
+    {
+      "id": 1,
+      "mode": "quick",
+      "stages": [
+        [
+          "Start",
+          0.0
+        ],
+        [
+          "ConnectReady",
+          0.146953653
+        ],
+        [
+          "FirstPartial",
+          0.745287923
+        ],
+        [
+          "Stop",
+          4.440209748
+        ],
+        [
+          "FinishSent",
+          4.440215828
+        ],
+        [
+          "FinalReceived",
+          4.787665671
+        ]
+      ],
+      "success": true,
+      "error": null
+    }
+  ]
+}
