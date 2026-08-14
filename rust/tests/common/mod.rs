@@ -116,6 +116,7 @@ pub struct ScriptedTransport {
     pub append_delay: Duration,
     pub finish_error: Option<String>,
     pub fail_after_appends: Option<usize>,
+    pub hang_on_finish: bool,
 }
 
 impl ScriptedTransport {
@@ -131,6 +132,7 @@ impl ScriptedTransport {
             append_delay: Duration::ZERO,
             finish_error: None,
             fail_after_appends: None,
+            hang_on_finish: false,
         }
     }
 }
@@ -182,6 +184,10 @@ impl BackendTransport for ScriptedTransport {
 
     async fn finish(&mut self) -> io::Result<()> {
         self.log.lock().push("transport.finish".to_owned());
+        if self.hang_on_finish {
+            std::future::pending::<()>().await;
+            unreachable!("pending future resolved")
+        }
         if let Some(message) = self.finish_error.take() {
             return Err(io::Error::new(io::ErrorKind::Other, message));
         }

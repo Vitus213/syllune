@@ -21,6 +21,7 @@ use crate::session::{
 pub const DEFAULT_QUEUE_CAPACITY: usize = 16;
 pub const DEFAULT_SEND_DEADLINE: Duration = Duration::from_millis(500);
 pub const DEFAULT_FINISH_TIMEOUT: Duration = Duration::from_secs(2);
+pub const DEFAULT_READY_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlCommand {
@@ -53,6 +54,7 @@ pub struct SessionPlan {
     pub queue_capacity: usize,
     pub send_deadline: Duration,
     pub finish_timeout: Duration,
+    pub ready_timeout: Duration,
 }
 
 impl SessionPlan {
@@ -63,6 +65,7 @@ impl SessionPlan {
             queue_capacity: DEFAULT_QUEUE_CAPACITY,
             send_deadline: DEFAULT_SEND_DEADLINE,
             finish_timeout: DEFAULT_FINISH_TIMEOUT,
+            ready_timeout: DEFAULT_READY_TIMEOUT,
         }
     }
 }
@@ -135,7 +138,35 @@ where
     let mut control = ControlInput::new(control);
     let mut session = RecognitionSession::new(plan.backend.clone());
 
+    let ready_deadline = tokio::time::Instant::now() + plan.ready_timeout;
+    loop {
+        tokio::select! {
+            biased;
+            command = control.receiver.recv(), if !control.closed => match command {
+                Some(_) | None => {
+                    if command.is_none() {
+                        control.closed = true;
+                    }
+                    return cancel_path(&mut capture, &mut transport, sink).await;
+                }
+            },
+            result = timeout_at(ready_deadline, transport.next_event()) => match result {
+                Ok(Ok(RealtimeEvent::Ready)) => break,
+                Ok(Ok(_)) => {}
+                Ok(Err(error)) => {
+                    let _ = transport.cancel().await;
+                    return fail(sink, &format!("backend ready: {error}"));
+                }
+                Err(_) => {
+                    let _ = transport.cancel().await;
+                    return fail(sink, "backend ready timed out");
+                }
+            },
+        }
+    }
+
     if let Err(error) = capture.start().await {
+        let _ = transport.cancel().await;
         return fail(sink, &format!("capture: {error}"));
     }
     if sink.emit(OutputEvent::Ready).is_err() {

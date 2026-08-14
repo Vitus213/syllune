@@ -109,6 +109,7 @@ async fn run_cloud_fixture(
 async fn stop_delivers_tail_and_finish_before_single_final_and_injection() {
     let log = new_log();
     let mut transport = ScriptedTransport::new(log.clone());
+    transport.before_finish.push_back(Ok(RealtimeEvent::Ready));
     transport
         .before_finish
         .push_back(Ok(RealtimeEvent::Partial {
@@ -190,6 +191,7 @@ async fn stop_delivers_tail_and_finish_before_single_final_and_injection() {
 async fn stop_without_speech_completes_without_injection_and_is_diagnosable() {
     let log = new_log();
     let mut transport = ScriptedTransport::new(log.clone());
+    transport.before_finish.push_back(Ok(RealtimeEvent::Ready));
     transport
         .after_finish
         .push_back(Ok(RealtimeEvent::Finished {
