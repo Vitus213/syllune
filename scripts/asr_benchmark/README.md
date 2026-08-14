@@ -1,0 +1,62 @@
+# ASR 语音识别基准测试
+
+云端 ASR 候选模型与本地模型的回归测试工具。**测试集与开发集严格分开**，
+每次改动后对 `test` 集跑一遍即可检验性能回归。
+
+## 数据组织
+
+```text
+corpus/dev.jsonl    开发集（调参/选型用，可反复折腾）
+corpus/test.jsonl   测试集（回归用，冻结不动）
+audio/<id>.wav      由 qwen3-tts-flash 合成的音频（生成缓存，不入库）
+reports/*.json      基准报告（不入库）
+```
+
+语料条目为 JSONL：`{"id", "reference", "voice"}`。`reference` 是送入 TTS 的
+原文，即转写的地面真值（ground truth）。开发集 24 条、测试集 12 条，全部为
+16 kHz 单声道 PCM16 WAV，覆盖日常口语、数字、专有名词、中英混排、长句、
+同音字陷阱、问句等场景；`dev` 用 Cherry/Ethan 双音色，`test` 用 Serena 音色，
+避免音色泄露。
+
+## 用法
+
+```bash
+# 1. 生成/补齐音频（需要 BAILIAN_API_KEY）
+BAILIAN_API_KEY=... nix develop --command python scripts/asr_benchmark/generate.py
+
+# 2. 跑基准（默认全部模型）
+BAILIAN_API_KEY=... nix develop --command python scripts/asr_benchmark/benchmark.py \
+    --split test --out reports/test-$(date +%F).json
+
+# 3. 快速回归（只跑主力模型 + 指定数量）
+BAILIAN_API_KEY=... nix develop --command python scripts/asr_benchmark/benchmark.py \
+    --split test --models qwen3-asr-flash-2026-02-10,sensevoice --limit 12
+```
+
+`benchmark.py --help` 可见全部选项。本地模型（`sensevoice`、`qwen3-sherpa`、
+`hybrid`）依赖仓库模型目录已安装（`type4me-linux model install sensevoice-int8`）。
+
+## 度量
+
+- **内容 CER**：忽略标点与空白（NFKC、小写）后的字符编辑距离 / 参考长度 —— 识别准确度。
+- **格式 CER**：保留标点、忽略空白 —— 标点结构准确度。
+- **英文 WER**：参考文本中 ASCII 单词（含数字）的词错误率，衡量中英混排能力。
+- **平均时延 / RTF**：单样本 API 往返秒数；RTF = 时延 / 音频时长。
+
+## 2026-08-13 初测排名（all 集，36 样本，TTS 合成语音）
+
+| 排名 | 模型 | 内容CER | 格式CER | 平均时延(s) | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `qwen3.5-omni-flash` | 0.0089 | 0.0236 | 0.88 | 云端；需固定“只转写”系统提示，问句会触发聊天回复 |
+| 2 | `qwen3-omni-flash` | 0.0090 | 0.0347 | 0.86 | 云端；同上 |
+| 3 | `qwen3-asr-flash-2026-02-10` | 0.0110 | 0.0209 | 0.64 | 云端；专用 ASR，无聊天漂移，最快，默认推荐 |
+| 4 | `qwen3-sherpa`（本地） | 0.0229 | 0.0331 | 1.04 | 离线基线 |
+| 5 | `sensevoice`（本地） | 0.1008 | 0.1132 | 0.14 | 离线草稿/流式基线 |
+
+要点：云端模型大幅领先本地；文本次要差异集中在英文 token（TTS 合成英文语音
+本身易被各模型误听，含测试口径噪声）。日常新语料跑 `--split test` 对比上表即可。
+
+## 回归判据
+
+同一 `test` 集下，新一轮报告的内容 CER 不得比上一轮劣化超过 0.005
+（约等于一条 20 字样本多错 1 字）；格式化 CER 同理。超限即回归。

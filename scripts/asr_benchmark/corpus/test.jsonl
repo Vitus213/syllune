@@ -1,0 +1,12 @@
+{"id": "test-01", "reference": "你好世界，欢迎使用语音输入。", "voice": "Serena"}
+{"id": "test-02", "reference": "请把文件保存到用户目录下的download文件夹里。", "voice": "Serena"}
+{"id": "test-03", "reference": "这次的训练一共用了两千张图片，准确率达到了百分之九十八。", "voice": "Serena"}
+{"id": "test-04", "reference": "他一边吃饭一边看手机，结果把汤洒在键盘上了。", "voice": "Serena"}
+{"id": "test-05", "reference": "系统提示：磁盘空间不足，请清理缓存后重试。", "voice": "Serena"}
+{"id": "test-06", "reference": "我们计划下周三下午两点召开项目评审会议。", "voice": "Serena"}
+{"id": "test-07", "reference": "这是一段比较长的语音转写测试文本，用来检验模型在长句子上的稳定表现以及标点符号的准确程度。", "voice": "Serena"}
+{"id": "test-08", "reference": "关键词：机器学习、深度学习、自然语言处理和大语言模型。", "voice": "Serena"}
+{"id": "test-09", "reference": "我的邮箱是vitus艾特example点com，欢迎随时联系。", "voice": "Serena"}
+{"id": "test-10", "reference": "该接口支持GET和POST两种请求方法，返回JSON格式的数据。", "voice": "Serena"}
+{"id": "test-11", "reference": "天气预报说明天降温十度，记得多穿点衣服小心着凉。", "voice": "Serena"}
+{"id": "test-12", "reference": "年度总结：总营收突破一亿元，新增用户八十五万，续费率百分之九十三。", "voice": "Serena"}

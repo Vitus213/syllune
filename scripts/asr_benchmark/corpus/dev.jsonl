@@ -1,0 +1,24 @@
+{"id": "dev-01", "reference": "你好，我是小助手。今天天气很好，我们一起去公园散步吧。", "voice": "Cherry"}
+{"id": "dev-02", "reference": "这个月的销售额是三百五十八万元，同比增长了百分之二十。", "voice": "Ethan"}
+{"id": "dev-03", "reference": "请把那个API的密钥配置到环境变量里，然后重启服务。", "voice": "Cherry"}
+{"id": "dev-04", "reference": "我们需要在NixOS上部署这个type4me-linux项目，使用sherpa_onnx进行语音识别。", "voice": "Ethan"}
+{"id": "dev-05", "reference": "他因为工作原因，心情非常忧郁，我们决定一起去公园散心。", "voice": "Cherry"}
+{"id": "dev-06", "reference": "阿里巴巴、腾讯和华为都发布了新一代的人工智能模型。", "voice": "Ethan"}
+{"id": "dev-07", "reference": "哎呀，这个也太难了吧，我搞了半天都没搞定。", "voice": "Cherry"}
+{"id": "dev-08", "reference": "根据最新的研究报告显示，长期坚持每天锻炼三十分钟以上的人群，心血管疾病的发病率显著低于缺乏运动的人群。", "voice": "Ethan"}
+{"id": "dev-09", "reference": "这台服务器配置了十六核CPU、一百二十八G内存和两块四TB的固态硬盘。", "voice": "Cherry"}
+{"id": "dev-10", "reference": "会议定在明天上午十点，地点是三楼会议室，请大家准时参加。", "voice": "Ethan"}
+{"id": "dev-11", "reference": "这个项目的CI流水线在GitHub Actions上运行，每次提交都会自动执行lint和test。", "voice": "Cherry"}
+{"id": "dev-12", "reference": "咱俩一会儿去趟超市呗，买点水果和牛奶回来。", "voice": "Ethan"}
+{"id": "dev-13", "reference": "现在是二零二六年八月十三号，农历七月初一。", "voice": "Cherry"}
+{"id": "dev-14", "reference": "美元兑人民币汇率在七点一五附近波动，央行维持稳健的货币政策。", "voice": "Ethan"}
+{"id": "dev-15", "reference": "你说的那个模型，参数量是零点六亿，精度用了int8量化。", "voice": "Cherry"}
+{"id": "dev-16", "reference": "你觉得这个方案可行吗？如果不行的话，我们还有什么备选方案？", "voice": "Ethan"}
+{"id": "dev-17", "reference": "请注意，这是非常重要的安全更新，请立即执行！", "voice": "Cherry"}
+{"id": "dev-18", "reference": "开源社区发布了新一代的操作系统内核，在性能上有大幅提升。", "voice": "Ethan"}
+{"id": "dev-19", "reference": "明天夜间到后天白天，全省大部分地区有中到大雨，局部地区伴有短时强降水。", "voice": "Cherry"}
+{"id": "dev-20", "reference": "函数声明为def_process_request，接受两个参数，返回一个字典。", "voice": "Ethan"}
+{"id": "dev-21", "reference": "王小明是北京大学计算机系的研究生，师从李教授。", "voice": "Cherry"}
+{"id": "dev-22", "reference": "嗯，我觉得吧，这个事儿还是得从长计议。", "voice": "Ethan"}
+{"id": "dev-23", "reference": "第一个版本发布于一八年，第二个版本是二零年，第三个版本是二二年。", "voice": "Cherry"}
+{"id": "dev-24", "reference": "患者需要按时服用阿莫西林，每天三次，每次一粒，饭后服用。", "voice": "Ethan"}

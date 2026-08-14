@@ -1,0 +1,27 @@
+[package]
+name = "syllune"
+version = "0.1.0"
+edition = "2021"
+description = "Fast realtime voice input for Linux"
+license = "MIT"
+
+[[bin]]
+name = "syllune"
+path = "src/main.rs"
+
+[dependencies]
+base64 = "0.22"
+clap = { version = "4.5", features = ["derive"] }
+futures-util = "0.3"
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-native-roots"] }
+toml = "0.8"
+sherpa-onnx = { version = "=1.13.3", default-features = false, features = ["shared"] }
+
+[dev-dependencies]
+parking_lot = "0.12"
+tempfile = "3"
