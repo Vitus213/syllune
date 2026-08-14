@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    name: Unit, integration, e2e, and flake checks
+    name: Rust tests and flake checks
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -16,14 +16,11 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v17
 
-      - name: Ruff
-        run: nix develop -c ruff check .
+      - name: Cargo fmt
+        run: nix develop -c cargo fmt --check
 
-      - name: Ruff format
-        run: nix develop -c ruff format --check .
-
-      - name: Tests with coverage
-        run: nix develop -c python -m pytest
+      - name: Cargo tests
+        run: nix develop -c cargo test --all-targets
 
       - name: Flake check
         run: nix flake check -L

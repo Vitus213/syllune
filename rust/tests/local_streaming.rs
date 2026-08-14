@@ -21,6 +21,10 @@ fn explicit_local_backend_reports_model_error_without_cloud() {
             "--json",
             "--no-inject",
         ])
+        .env("XDG_CONFIG_HOME", root.path().join("config"))
+        .env("XDG_DATA_HOME", root.path().join("data"))
+        .env("XDG_CACHE_HOME", root.path().join("cache"))
+        .env("XDG_STATE_HOME", root.path().join("state"))
         .output()
         .expect("syllune binary should be runnable");
 
@@ -65,6 +69,10 @@ fn local_backend_reports_the_missing_required_model_file() {
             "--json",
             "--no-inject",
         ])
+        .env("XDG_CONFIG_HOME", root.path().join("config"))
+        .env("XDG_DATA_HOME", root.path().join("data"))
+        .env("XDG_CACHE_HOME", root.path().join("cache"))
+        .env("XDG_STATE_HOME", root.path().join("state"))
         .output()
         .expect("syllune binary should be runnable");
 

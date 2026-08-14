@@ -106,19 +106,14 @@ pub struct ModesRepository {
 }
 
 impl ModesRepository {
+    /// Open the repository. A missing file loads the builtin modes into
+    /// memory without touching disk; the file is only created on the first
+    /// mutation so read-only commands work anywhere.
     pub fn open(path: PathBuf) -> Result<Self, ModesError> {
         let modes = if path.exists() {
             Self::load(&path)?
         } else {
-            let modes = builtin_modes();
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent).map_err(|error| {
-                    ModesError::Write(path.display().to_string(), error.to_string())
-                })?;
-            }
-            let modes = sort_modes(modes);
-            store(&path, &modes)?;
-            modes
+            sort_modes(builtin_modes())
         };
         Ok(Self { path, modes })
     }
@@ -270,6 +265,11 @@ impl ModesRepository {
 }
 
 fn store(path: &Path, modes: &[Mode]) -> Result<(), ModesError> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            ModesError::Write(path.display().to_string(), error.to_string())
+        })?;
+    }
     let content = serde_json::to_string_pretty(modes)
         .map_err(|error| ModesError::Write(path.display().to_string(), error.to_string()))?
         + "\n";

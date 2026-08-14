@@ -1,19 +1,16 @@
 set dotenv-load := false
 
 test:
-    python -m pytest
+    nix develop -c cargo test --all-targets
 
 lint:
-    ruff check .
-    ruff format --check .
+    nix develop -c cargo fmt --check
+    nix develop -c cargo clippy --all-targets --all-features -- -D warnings
 
 check:
     just lint
     just test
-    nix flake check
-
-precommit:
-    pre-commit run --all-files
+    nix flake check -L
 
 run *ARGS:
     nix run . -- {{ARGS}}

@@ -7,12 +7,17 @@ use tempfile::tempdir;
 fn open_seeds_builtins_and_keeps_quick_first() {
     let root = tempdir().expect("temporary root");
     let path = root.path().join("modes.json");
-    let repository = ModesRepository::open(path.clone()).expect("open repository");
+    let mut repository = ModesRepository::open(path.clone()).expect("open repository");
 
     let modes = repository.list();
     assert_eq!(modes.len(), builtin_modes().len());
     assert_eq!(modes[0].id, "quick");
-    assert!(path.is_file(), "repository must persist modes.json");
+    assert!(
+        !path.is_file(),
+        "opening must not write until the first mutation"
+    );
+    repository.add("触发持久化", "p", "").expect("first mutation");
+    assert!(path.is_file(), "first mutation must persist modes.json");
     let raw = fs::read_to_string(&path).expect("modes.json readable");
     let parsed: serde_json::Value = serde_json::from_str(&raw).expect("valid JSON");
     assert!(parsed.is_array());
