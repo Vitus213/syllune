@@ -120,7 +120,11 @@ pub fn corpus_version(entries: &[CorpusEntry]) -> String {
         hasher.update(b"\x1e");
     }
     let digest = hasher.finalize();
-    let hex: String = digest.iter().take(8).map(|byte| format!("{byte:02x}")).collect();
+    let hex: String = digest
+        .iter()
+        .take(8)
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
     format!("corpus-{hex}")
 }
 
@@ -193,7 +197,11 @@ pub fn run_asr_benchmark_split<F: BackendFactory>(
             }
         }
     }
-    let scored: Vec<f64> = samples.iter().map(|sample| sample.cer).filter(|value| value.is_finite()).collect();
+    let scored: Vec<f64> = samples
+        .iter()
+        .map(|sample| sample.cer)
+        .filter(|value| value.is_finite())
+        .collect();
     let content_cer = if scored.is_empty() {
         0.0
     } else {
