@@ -202,9 +202,9 @@ syllune history serve            # http://127.0.0.1:8790/
 syllune history serve --port 9000
 ```
 
-![Syllune 夜声档案：按天分组的记录，波形从保存的录音渲染](docs/images/history-console.png)
+![Syllune 夜声档案真实历史：按天分组；录音保留上线前的记录显示无录音标签](docs/images/history-console.png)
 
-![控制台播放态：展开的记录，含波形、进度条与最终文本](docs/images/history-console-playing.png)
+![控制台播放态（合成演示音频）：展开的记录，含波形、进度条与最终文本](docs/images/history-console-playing.png)
 
 控制台是单个内嵌页面，只监听回环地址。它显示：
 
