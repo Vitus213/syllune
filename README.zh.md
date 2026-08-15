@@ -1,0 +1,224 @@
+# Syllune
+
+面向 NixOS / Wayland 的原生 Rust 实时语音输入。Syllune 通过 PipeWire（`pw-record`）采集 16 kHz 单声道 PCM16，说话期间持续转写（默认 DashScope 云端实时会话，或本地 Sherpa-ONNX 流式 Paraformer），结束后用 `wtype` 把最终文本打进当前焦点窗口。无 Python 运行时、无桌面外壳——一个二进制、一个快捷键。
+
+> English docs: [README.md](README.md).
+
+**30 秒版本**
+
+```bash
+nix run github:Vitus213/syllune -- doctor   # 检查 pw-record / wtype / wl-copy
+nix run github:Vitus213/syllune -- stream   # 说话，Ctrl-C，文本自动注入
+```
+
+目录：[适配](#适配) · [安装](#安装) · [首次运行](#首次运行) · [命令](#命令) · [配置](#配置) · [模式与注入](#模式与注入) · [历史、录音与 Web 控制台](#历史录音与-web-控制台) · [模型目录](#模型目录) · [从 type4me-linux 迁移](#从-type4me-linux-迁移) · [开发](#开发)
+
+## 适配
+
+| 层 | 要求 | 说明 |
+| --- | --- | --- |
+| 系统 | NixOS / Linux，`x86_64` 或 `aarch64` | flake 仅声明这两个 system |
+| 显示服务器 | Wayland | 注入走 `wtype`，剪贴板兜底走 `wl-copy` |
+| 音频 | PipeWire | 采集进程为 `pw-record`（16 kHz 单声道 PCM16） |
+| 合成器快捷键 | XDG Desktop Portal `GlobalShortcuts`（尽力而为） | 门户不可用时回退到 `dev.syllune.Daemon` D-Bus 控制总线；Home Manager 模块自带 Sway 绑定 |
+| 云端 ASR | DashScope 实时端点（`qwen3-asr-flash-realtime`） | 需要 API key |
+| 本地 ASR | Sherpa-ONNX 流式 Paraformer（`streaming-paraformer-bilingual-zh-en`） | `syllune model install` 安装，每次会话前重新校验完整性 |
+| 批量 ASR | DashScope 多模态或本地 SenseVoice | 供 `transcribe` / `record` 使用 |
+
+不支持：X11、macOS、Windows。
+
+## 安装
+
+### Nix flake（推荐）
+
+不安装、直接运行：
+
+```bash
+nix run github:Vitus213/syllune -- doctor
+```
+
+本地检出：
+
+```bash
+nix run . -- doctor
+```
+
+通过 flake overlay 加入 NixOS / home 配置：
+
+```nix
+{
+  inputs.syllune.url = "github:Vitus213/syllune";
+
+  outputs = { nixpkgs, syllune, ... }: {
+    # 例如 environment.systemPackages 或 home.packages：
+    home.packages = [ syllune.packages.${system}.syllune ];
+    # 或：nixpkgs.overlays = [ syllune.overlays.default ]; 之后用 pkgs.syllune
+  };
+}
+```
+
+### Home Manager
+
+flake 提供 `homeManagerModules.default`：安装包、管理 `~/.config/syllune/config.toml`、可选常驻 daemon 与 Sway 快捷键：
+
+```nix
+{
+  inputs.syllune.url = "github:Vitus213/syllune";
+
+  imports = [ inputs.syllune.homeManagerModules.default ];
+
+  programs.syllune = {
+    enable = true;
+    settings.asr.streaming_backend = "cloud-realtime"; # 或 "local-streaming"
+    settings.cloud.api_key = "sk-...";                 # 生成的文件为 0600
+    service.enable = true;                             # 常驻 `syllune daemon`
+    shortcuts.sway.enable = true;                      # $mod+Shift+d 切换
+  };
+}
+```
+
+`shortcuts.sway` 只添加 Sway 绑定；GlobalShortcuts 门户后端在 NixOS 层配置，缺失时 daemon 仍可通过 D-Bus 正常工作。
+
+### 源码构建（开发）
+
+```bash
+nix develop
+cargo test --all-targets
+cargo fmt && cargo clippy --all-targets --all-features -- -D warnings
+nix flake check -L
+```
+
+dev shell 提供 `cargo`、`pipewire`、`wtype`、`wl-clipboard` 及 Sherpa-ONNX/ONNX 运行时库（`SHERPA_ONNX_LIB_DIR` 已预设）。
+
+## 首次运行
+
+```bash
+syllune doctor          # 检查 pw-record、wtype、wl-copy 与数据目录
+syllune stream          # 说话；第一次 Ctrl-C 停止并注入；第二次 Ctrl-C 取消
+```
+
+停止语义：第一次 `Ctrl-C`（或第二次快捷键激活、采集 EOF）停止采集、冲刷尾帧、发送恰好一次完成信号并注入唯一最终文本；第二次 `Ctrl-C` 或 `SIGTERM` 强制取消，不注入任何部分文本。
+
+配置文件位于 `~/.config/syllune/config.toml`（严格 TOML，未知键报错；含 `api_key` 的文件权限必须不宽于 0600）：
+
+```toml
+[asr]
+streaming_backend = "cloud-realtime"   # 或 "local-streaming"
+
+[cloud]
+api_key = "sk-..."
+realtime_endpoint = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
+realtime_model = "qwen3-asr-flash-realtime"
+```
+
+本地后端先安装托管模型：
+
+```bash
+syllune model install streaming-paraformer-bilingual-zh-en
+syllune stream --backend local-streaming
+```
+
+## 命令
+
+| 命令 | 说明 |
+| --- | --- |
+| `syllune stream` | 实时录音识别；`--backend`、`--mode`、`--json`、`--no-inject` |
+| `syllune transcribe <wav>` | 批量转写 WAV（云端 DashScope 或本地 SenseVoice） |
+| `syllune record --seconds N` | 定时录音后转写 |
+| `syllune model list\|install\|check\|remove` | 模型目录（固定 URL、字节数、SRI SHA-256、成员白名单） |
+| `syllune mode list\|reload\|add\|update\|remove` | 文本处理模式 |
+| `syllune history list\|delete\|export\|totals\|usage` | 识别历史（SQLite） |
+| `syllune history serve` | 本地 Web 控制台（`--host`、`--port`；默认 `http://127.0.0.1:8790`） |
+| `syllune daemon` | headless daemon，导出 `dev.syllune.Daemon.Controller` D-Bus 接口 |
+| `syllune doctor` | 依赖与数据目录检查 |
+| `syllune benchmark asr\|latency` | CER / stop→inject 延迟门禁（缺凭据或 Wayland 注入环境时只报告 skip，不产生通过结论） |
+
+## 配置
+
+完整键参考（均可选，默认值如下）：
+
+```toml
+[asr]
+streaming_backend = "cloud-realtime"   # cloud-realtime | local-streaming
+batch_backend = "cloud"                # cloud | local（SenseVoice）
+# local_model_dir / batch_model_dir：覆盖托管模型位置
+
+[cloud]
+api_key = ""                           # 云端后端必需；文件必须 0600
+base_url = "https://dashscope.aliyuncs.com"
+model = "qwen3-asr-flash-2026-02-10"
+timeout_seconds = 60.0
+realtime_endpoint = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
+realtime_model = "qwen3-asr-flash-realtime"
+
+[inject]
+prefer = "wtype"                       # wtype | clipboard
+wtype_command = "wtype"
+wl_copy_command = "wl-copy"
+clipboard_fallback = true
+timeout_seconds = 10.0
+
+[processing]
+provider = "none"                      # none | openai-compatible | ollama
+base_url = ""
+model = ""
+api_key_env = ""                       # 存放密钥的环境变量名
+timeout_seconds = 30.0
+
+[history]
+enabled = true
+save_audio = true                      # 每次成功会话保留一份 WAV
+```
+
+旧 `cloud-vad`、`sensevoice-vad`、`final_backend` 配置会被明确拒绝，不会静默改写。
+
+## 模式与注入
+
+`quick` 模式零外部调用直接注入识别文本；其他模式（语音润色、提示词优化、翻译为英文）把最终文本交给 `[processing]` 配置的模型处理，处理失败时保留识别原文并输出 warning。最终文本最多注入一次；历史只记录成功的权威文本。
+
+## 历史、录音与 Web 控制台
+
+每次成功完成的流式会话会把采集到的 PCM 镜像为规范 16 kHz 单声道 WAV，保存在 `~/.local/share/syllune/audio/`（约 115 KB/分钟），并在历史库中记录 `audio_path` 与 `duration_seconds`（schema v2，v1 库打开时自动迁移）。取消、失败或空会话不留任何文件；`history delete` / `delete --all` 会连同录音一起删除；`[history] save_audio = false` 关闭保留。
+
+```bash
+syllune history serve            # http://127.0.0.1:8790/
+syllune history serve --port 9000
+```
+
+控制台为内嵌单页，仅绑定回环地址：按天分组的记录列表、从真实 WAV 渲染的波形、点击播放与可拖拽进度、记录/字数/语音时长统计、游标分页。音频 URL 只含 record id，文件路径从数据库解析，支持 `Range` 请求，浏览器可边下边播。
+
+## 模型目录
+
+| ID | 版本与字节数 | 固定源与 SRI SHA-256 |
+| --- | --- | --- |
+| `streaming-paraformer-bilingual-zh-en` | `asr-models-2024-03-10`；`1047319737` | <https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2><br>`sha256-VGKh/OQmk96uVyrx6MRocSSxKqhf5h/00xaLtSgOIF8=` |
+
+安装使用 HTTPS 固定源，下载后校验 SRI SHA-256 与字节数、解压时拒绝白名单外成员、写入按文件哈希的 manifest，并通过 `versions/<id>/<version>-<digest12>` + `current` 符号链接原子激活。每次会话前重新校验模型完整性，损坏的模型不会被使用。许可证状态见 `syllune model list --json` 的 `license_status` 字段，发布前需独立核验。
+
+## 从 type4me-linux 迁移
+
+Syllune 只使用 `syllune` 命名的 XDG 目录，**不会**自动读取、移动或删除旧 `type4me-linux` 目录。手动迁移前提：
+
+- 配置：把 `~/.config/type4me-linux/config.toml` 的 `[cloud]` 段复制到新文件，并把 `streaming_backend` 改为 `cloud-realtime` 或 `local-streaming`（旧枚举已删除）。
+- 模型：运行 `syllune model install streaming-paraformer-bilingual-zh-en`；模型目录独立，旧文件不会自动接管。
+- 历史：旧 SQLite 历史不会自动导入；如需保留用旧工具导出 CSV。
+- 回滚：安装旧版 `type4me-linux` 发布物即可，两个应用的状态目录互不干扰。
+
+## 开发
+
+```bash
+just test    # nix develop -c cargo test --all-targets
+just lint    # cargo fmt --check + clippy -D warnings
+just check   # lint + test + nix flake check -L
+just run …   # nix run . -- …
+```
+
+真实质量与延迟门禁（`benchmark asr` CER ≤ 0.02，`benchmark latency` stop→inject p99 ≤ 1.0 s）见 `docs/low-latency-rust-plan.md` 与 OpenSpec change；缺真实凭据或 Wayland 注入环境时只报告 skip，不产生通过结论。
+
+设计文档：`openspec/changes/migrate-syllune-native-streaming/`；低延迟方案：`docs/low-latency-rust-plan.md`。
+
+## 相关
+
+- PipeWire：<https://pipewire.org/>
+- Sherpa-ONNX：<https://github.com/k2-fsa/sherpa-onnx>
+- XDG Desktop Portal：<https://flatpak.github.io/xdg-desktop-portal/>
