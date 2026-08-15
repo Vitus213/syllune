@@ -100,10 +100,39 @@ pub async fn run_asr(args: AsrBenchmarkArgs) -> i32 {
             }
         }
         "local-streaming" => {
-            eprintln!(
-                "Syllune: local-streaming benchmark requires an installed online model and is reported separately; skipped (unverified)"
+            let spec = crate::models::streaming_paraformer_spec();
+            let manager = crate::models::ModelManager::new(
+                &crate::models::default_data_dir(),
+                &crate::models::default_cache_dir(),
             );
-            return 2;
+            let payload = match manager.resolve(&spec.id) {
+                Ok(Some(payload)) => payload,
+                Ok(None) => {
+                    eprintln!(
+                        "Syllune: streaming model not installed; benchmark skipped (unverified)"
+                    );
+                    return 2;
+                }
+                Err(error) => {
+                    eprintln!("Syllune: {error}; benchmark skipped (unverified)");
+                    return 2;
+                }
+            };
+            match manager.check(&spec) {
+                Ok((_, report)) if report.ok() => {}
+                Ok((_, report)) => {
+                    eprintln!(
+                        "Syllune: installed model is corrupted ({:?}); benchmark skipped (unverified)",
+                        report
+                    );
+                    return 2;
+                }
+                Err(error) => {
+                    eprintln!("Syllune: {error}; benchmark skipped (unverified)");
+                    return 2;
+                }
+            }
+            Backend::Local { payload }
         }
         other => {
             eprintln!("Syllune: unknown benchmark backend: {other}");
@@ -111,7 +140,11 @@ pub async fn run_asr(args: AsrBenchmarkArgs) -> i32 {
         }
     };
 
-    let model = config.cloud.realtime_model.clone();
+    let model = match args.backend.as_str() {
+        "cloud-realtime" => config.cloud.realtime_model.clone(),
+        _ => crate::models::streaming_paraformer_spec().id,
+    };
+
     let mut factory = factory;
     let report = run_asr_benchmark_split(
         &entries,
@@ -153,7 +186,11 @@ pub async fn run_asr(args: AsrBenchmarkArgs) -> i32 {
         );
         return 1;
     }
-    if args.enforce {
+    if args.backend != "cloud-realtime" {
+        // Local reports are informational: no cross-backend threshold applies
+        // and they never merge with the cloud gate.
+        println!("Syllune: local CER reported separately; no gate enforced");
+    } else if args.enforce {
         println!("Syllune: quality gate passed");
     }
     0
@@ -180,6 +217,7 @@ fn write_report(
 /// Production replay backend.
 enum Backend {
     Cloud { config: AppConfig },
+    Local { payload: std::path::PathBuf },
 }
 
 impl BackendFactory for Backend {
@@ -189,14 +227,47 @@ impl BackendFactory for Backend {
         pcm: &[u8],
         chunk_interval: Duration,
     ) -> Result<String, String> {
-        let Backend::Cloud { config } = self;
-        let config = config.clone();
-        let pcm = pcm.to_vec();
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current()
-                .block_on(async move { replay_cloud(&config, &pcm, chunk_interval).await })
-        })
+        match self {
+            Backend::Cloud { config } => {
+                let config = config.clone();
+                let pcm = pcm.to_vec();
+                tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(async move {
+                        replay_cloud(&config, &pcm, chunk_interval).await
+                    })
+                })
+            }
+            Backend::Local { payload } => {
+                let payload = payload.clone();
+                let pcm = pcm.to_vec();
+                tokio::task::block_in_place(move || replay_local(&payload, &pcm))
+            }
+        }
     }
+}
+
+fn replay_local(payload: &std::path::Path, pcm: &[u8]) -> Result<String, String> {
+    let mut recognizer = crate::local_asr::LocalStreamingRecognizer::new(payload)
+        .map_err(|error| error.to_string())?;
+    let mut confirmed: Vec<String> = Vec::new();
+    for chunk in pcm.chunks(crate::capture::CHUNK_BYTES) {
+        for event in recognizer.accept_pcm(chunk).map_err(|error| error.to_string())? {
+            if let RealtimeEvent::Completed { transcript } = event {
+                if !transcript.is_empty() {
+                    confirmed.push(transcript);
+                }
+            }
+        }
+    }
+    let mut final_text = confirmed.join("");
+    for event in recognizer.finish().map_err(|error| error.to_string())? {
+        if let RealtimeEvent::Finished { transcript } = event {
+            if !transcript.is_empty() {
+                final_text = transcript;
+            }
+        }
+    }
+    Ok(final_text)
 }
 
 async fn replay_cloud(
