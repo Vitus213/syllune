@@ -1,12 +1,21 @@
-# Syllune
+<p align="center">
+  <img src="docs/images/history-console-playing.png" alt="Syllune 夜声档案播放录音" width="760">
+</p>
 
-Syllune 是面向 NixOS 与 Wayland 的实时语音输入工具，用 Rust 编写。
+<p align="center">
+  <strong>面向 NixOS 与 Wayland 的实时语音输入 —— 单个 Rust 二进制，一个快捷键。</strong><br>
+  <a href="README.md">English</a> · <a href="README.zh.md">中文</a>
+</p>
 
-Syllune 用 PipeWire（`pw-record`）录音，采集格式为 16 kHz 单声道 PCM16。说话期间持续转写：默认后端是 DashScope 云端实时服务，可选本地 Sherpa-ONNX 流式 Paraformer。结束后用 `wtype` 把最终文本打进焦点窗口。
+<p align="center">
+  <a href="https://github.com/Vitus213/syllune/actions"><img src="https://img.shields.io/github/actions/workflow/status/Vitus213/syllune/ci.yml?style=flat&colorA=222222&colorB=3FB950" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Vitus213/syllune?style=flat&colorA=222222&colorB=58A6FF" alt="License"></a>
+  <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/Rust-DEA584?style=flat&colorA=222222&logo=rust&logoColor=white" alt="Rust"></a>
+  <a href="https://nixos.org"><img src="https://img.shields.io/badge/NixOS-5277C3?style=flat&colorA=222222&logo=nixos&logoColor=white" alt="NixOS"></a>
+  <a href="https://pipewire.org"><img src="https://img.shields.io/badge/audio-PipeWire-7EB9D6?style=flat&colorA=222222" alt="PipeWire"></a>
+</p>
 
-Syllune 是单个二进制，无 Python 运行时、无桌面外壳，一个快捷键控制。
-
-> 英文文档见 [README.md](README.md)。
+Syllune 用 PipeWire（`pw-record`）以 16 kHz 单声道 PCM16 录音，说话期间持续转写（默认 DashScope 云端实时，或本地 Sherpa-ONNX 流式 Paraformer），结束后用 `wtype` 把最终文本打进焦点窗口。单个二进制：无 Python 运行时、无桌面外壳。
 
 **快速开始**
 

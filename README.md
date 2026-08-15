@@ -1,12 +1,21 @@
-# Syllune
+<p align="center">
+  <img src="docs/images/history-console-playing.png" alt="Syllune history console playing a recording" width="760">
+</p>
 
-Syllune is a realtime voice input tool for NixOS and Wayland. It is written in Rust.
+<p align="center">
+  <strong>Realtime voice input for NixOS and Wayland — one Rust binary, one hotkey.</strong><br>
+  <a href="README.md">English</a> · <a href="README.zh.md">中文</a>
+</p>
 
-Syllune records audio with PipeWire (`pw-record`). The capture format is 16 kHz mono PCM16. Syllune transcribes your speech while you speak. The default backend is the DashScope cloud realtime service. The optional local backend is the Sherpa-ONNX streaming Paraformer. Syllune then types the final text into the focused window with `wtype`.
+<p align="center">
+  <a href="https://github.com/Vitus213/syllune/actions"><img src="https://img.shields.io/github/actions/workflow/status/Vitus213/syllune/ci.yml?style=flat&colorA=222222&colorB=3FB950" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Vitus213/syllune?style=flat&colorA=222222&colorB=58A6FF" alt="License"></a>
+  <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/Rust-DEA584?style=flat&colorA=222222&logo=rust&logoColor=white" alt="Rust"></a>
+  <a href="https://nixos.org"><img src="https://img.shields.io/badge/NixOS-5277C3?style=flat&colorA=222222&logo=nixos&logoColor=white" alt="NixOS"></a>
+  <a href="https://pipewire.org"><img src="https://img.shields.io/badge/audio-PipeWire-7EB9D6?style=flat&colorA=222222" alt="PipeWire"></a>
+</p>
 
-Syllune is one binary. It has no Python runtime and no desktop shell. One hotkey controls it.
-
-> For the Chinese documentation, refer to [README.zh.md](README.zh.md).
+Syllune records audio with PipeWire (`pw-record`) at 16 kHz mono PCM16, transcribes while you speak (DashScope cloud realtime by default, or the local Sherpa-ONNX streaming Paraformer), and types the final text into the focused window with `wtype`. One binary: no Python runtime, no desktop shell.
 
 **Quick start**
 
