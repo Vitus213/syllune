@@ -10,7 +10,7 @@ use time::{Duration, OffsetDateTime};
 
 use crate::coordinator::HistoryEntry;
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 const BUSY_TIMEOUT_MS: i64 = 5_000;
 
 #[derive(Debug, thiserror::Error)]
@@ -38,6 +38,7 @@ pub struct HistoryRecord {
     pub character_count: i64,
     pub asr_provider: Option<String>,
     pub asr_model: Option<String>,
+    pub audio_path: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -112,6 +113,14 @@ impl HistoryStore {
                 )
                 .map_err(|error| HistoryError::Database(error.to_string()))?;
         }
+        if version < 2 {
+            connection
+                .execute_batch(
+                    "ALTER TABLE recognition_history ADD COLUMN audio_path TEXT;
+                     PRAGMA user_version = 2;",
+                )
+                .map_err(|error| HistoryError::Database(error.to_string()))?;
+        }
         connection
             .execute_batch("COMMIT")
             .map_err(|error| HistoryError::Database(error.to_string()))?;
@@ -137,12 +146,12 @@ impl HistoryStore {
                 "INSERT INTO recognition_history (
                     id, created_at, duration_seconds, raw_text, processing_mode,
                     processed_text, final_text, status, character_count,
-                    asr_provider, asr_model
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                    asr_provider, asr_model, audio_path
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![
                     id,
                     created_at,
-                    None::<f64>,
+                    entry.duration_seconds,
                     entry.raw_text,
                     entry.processing_mode,
                     entry.processed_text,
@@ -151,13 +160,14 @@ impl HistoryStore {
                     entry.final_text.chars().count() as i64,
                     backend,
                     None::<String>,
+                    entry.audio_path,
                 ],
             )
             .map_err(|error| HistoryError::Database(error.to_string()))?;
         Ok(HistoryRecord {
             id,
             created_at,
-            duration_seconds: None,
+            duration_seconds: entry.duration_seconds,
             raw_text: entry.raw_text.clone(),
             processing_mode: Some(entry.processing_mode.clone()),
             processed_text: entry.processed_text.clone(),
@@ -166,6 +176,7 @@ impl HistoryStore {
             character_count: entry.final_text.chars().count() as i64,
             asr_provider: Some(backend.to_owned()),
             asr_model: None,
+            audio_path: entry.audio_path.clone(),
         })
     }
 
@@ -183,7 +194,7 @@ impl HistoryStore {
                 .prepare(
                     "SELECT id, created_at, duration_seconds, raw_text, processing_mode,
                             processed_text, final_text, status, character_count,
-                            asr_provider, asr_model
+                            asr_provider, asr_model, audio_path
                      FROM recognition_history
                      WHERE (created_at < ?1 OR (created_at = ?1 AND id < ?2))
                      ORDER BY created_at DESC, id DESC LIMIT ?3",
@@ -197,7 +208,7 @@ impl HistoryStore {
                 .prepare(
                     "SELECT id, created_at, duration_seconds, raw_text, processing_mode,
                             processed_text, final_text, status, character_count,
-                            asr_provider, asr_model
+                            asr_provider, asr_model, audio_path
                      FROM recognition_history
                      ORDER BY created_at DESC, id DESC LIMIT ?1",
                 )
@@ -230,6 +241,7 @@ impl HistoryStore {
             return Ok(0);
         }
         let connection = self.connect()?;
+        let audio_paths = audio_paths_for(&connection, ids)?;
         let placeholders = vec!["?"; ids.len()].join(", ");
         let deleted = connection
             .execute(
@@ -237,14 +249,24 @@ impl HistoryStore {
                 rusqlite::params_from_iter(ids),
             )
             .map_err(|error| HistoryError::Database(error.to_string()))?;
+        remove_audio_files(&audio_paths);
         Ok(deleted as i64)
     }
 
     pub fn delete_all(&self) -> Result<i64, HistoryError> {
         let connection = self.connect()?;
+        let mut statement = connection
+            .prepare("SELECT audio_path FROM recognition_history WHERE audio_path IS NOT NULL")
+            .map_err(|error| HistoryError::Database(error.to_string()))?;
+        let audio_paths: Vec<String> = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|error| HistoryError::Database(error.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| HistoryError::Database(error.to_string()))?;
         let deleted = connection
             .execute("DELETE FROM recognition_history", [])
             .map_err(|error| HistoryError::Database(error.to_string()))?;
+        remove_audio_files(&audio_paths);
         Ok(deleted as i64)
     }
 
@@ -328,7 +350,7 @@ impl HistoryStore {
             .prepare(
                 "SELECT id, created_at, duration_seconds, raw_text, processing_mode,
                         processed_text, final_text, status, character_count,
-                        asr_provider, asr_model
+                        asr_provider, asr_model, audio_path
                  FROM recognition_history ORDER BY created_at DESC, id DESC",
             )
             .map_err(|error| HistoryError::Database(error.to_string()))?;
@@ -338,7 +360,7 @@ impl HistoryStore {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| HistoryError::Database(error.to_string()))?;
         let mut csv = String::from(
-            "id,created_at,duration_seconds,raw_text,processing_mode,processed_text,final_text,status,character_count,asr_provider,asr_model\n",
+            "id,created_at,duration_seconds,raw_text,processing_mode,processed_text,final_text,status,character_count,asr_provider,asr_model,audio_path\n",
         );
         for record in &records {
             let fields = [
@@ -356,6 +378,7 @@ impl HistoryStore {
                 &record.character_count.to_string(),
                 record.asr_provider.as_deref().unwrap_or_default(),
                 record.asr_model.as_deref().unwrap_or_default(),
+                record.audio_path.as_deref().unwrap_or_default(),
             ];
             let escaped: Vec<String> = fields
                 .iter()
@@ -383,7 +406,7 @@ impl HistoryStore {
             .query_row(
                 "SELECT id, created_at, duration_seconds, raw_text, processing_mode,
                         processed_text, final_text, status, character_count,
-                        asr_provider, asr_model
+                        asr_provider, asr_model, audio_path
                  FROM recognition_history WHERE id = ?1",
                 params![record_id],
                 record_from_row,
@@ -407,6 +430,7 @@ fn record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<HistoryRecord> {
         character_count: row.get(8)?,
         asr_provider: row.get(9)?,
         asr_model: row.get(10)?,
+        audio_path: row.get(11)?,
     })
 }
 
@@ -458,4 +482,32 @@ fn decode_cursor(cursor: &str) -> Result<(String, String), HistoryError> {
         .ok_or(HistoryError::Cursor)?
         .to_owned();
     Ok((created_at, record_id))
+}
+
+/// Best-effort cleanup: retained recordings whose row is gone must not
+/// linger. Missing files are not an error.
+fn remove_audio_files(paths: &[String]) {
+    for path in paths {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+fn audio_paths_for(
+    connection: &rusqlite::Connection,
+    ids: &[String],
+) -> Result<Vec<String>, HistoryError> {
+    let placeholders = vec!["?"; ids.len()].join(", ");
+    let mut statement = connection
+        .prepare(&format!(
+            "SELECT audio_path FROM recognition_history
+             WHERE id IN ({placeholders}) AND audio_path IS NOT NULL"
+        ))
+        .map_err(|error| HistoryError::Database(error.to_string()))?;
+    let rows = statement
+        .query_map(rusqlite::params_from_iter(ids), |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(|error| HistoryError::Database(error.to_string()))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| HistoryError::Database(error.to_string()))
 }

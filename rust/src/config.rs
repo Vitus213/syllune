@@ -128,11 +128,17 @@ impl Default for ProcessingConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct HistoryConfig {
     pub enabled: bool,
+    /// Keep the WAV recording of every successful streaming session next
+    /// to the history database (`~/.local/share/syllune/audio/`).
+    pub save_audio: bool,
 }
 
 impl Default for HistoryConfig {
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            save_audio: true,
+        }
     }
 }
 

@@ -143,6 +143,10 @@ struct HistoryArgs {
     destination: Option<PathBuf>,
     #[arg(long, global = true, default_value_t = 7)]
     days: i64,
+    #[arg(long, global = true, default_value = "127.0.0.1")]
+    host: String,
+    #[arg(long, global = true, default_value_t = 8790)]
+    port: u16,
 }
 
 #[derive(Debug, Subcommand)]
@@ -152,6 +156,8 @@ enum HistoryAction {
     Export,
     Totals,
     Usage,
+    /// Open the local web console for browsing records and recordings.
+    Serve,
 }
 
 #[tokio::main]
@@ -218,6 +224,23 @@ async fn main() {
                 },
             )
         }
+        Command::History(args) if matches!(args.action, HistoryAction::Serve) => {
+            match syllune::history_web::serve(
+                syllune::models::default_data_dir().join("history.sqlite3"),
+                syllune::history_web::ServeOptions {
+                    host: args.host,
+                    port: args.port,
+                },
+            )
+            .await
+            {
+                Ok(code) => code,
+                Err(error) => {
+                    eprintln!("Syllune: {error}");
+                    1
+                }
+            }
+        }
         Command::History(args) => {
             let action = match args.action {
                 HistoryAction::List => "list",
@@ -225,6 +248,7 @@ async fn main() {
                 HistoryAction::Export => "export",
                 HistoryAction::Totals => "totals",
                 HistoryAction::Usage => "usage",
+                HistoryAction::Serve => unreachable!("handled above"),
             };
             syllune::history_cmd::run(
                 action,

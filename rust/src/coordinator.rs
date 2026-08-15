@@ -12,6 +12,7 @@
 use std::collections::VecDeque;
 use std::future::Future;
 use std::io;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::Serialize;
@@ -61,6 +62,9 @@ pub struct SessionPlan {
     pub send_deadline: Duration,
     pub finish_timeout: Duration,
     pub ready_timeout: Duration,
+    /// Directory where each successful session's WAV recording is saved;
+    /// `None` disables audio retention.
+    pub save_audio_dir: Option<PathBuf>,
 }
 
 impl SessionPlan {
@@ -73,6 +77,7 @@ impl SessionPlan {
             send_deadline: DEFAULT_SEND_DEADLINE,
             finish_timeout: DEFAULT_FINISH_TIMEOUT,
             ready_timeout: DEFAULT_READY_TIMEOUT,
+            save_audio_dir: None,
         }
     }
 }
@@ -85,6 +90,11 @@ pub trait AudioCapture {
     async fn next_chunk(&mut self) -> io::Result<Option<Vec<u8>>>;
     async fn stop_capture(&mut self) -> io::Result<Option<Vec<u8>>>;
     fn abort(&mut self) {}
+    /// Finalize a saved recording after a successful session; `None` when
+    /// nothing was recorded or saving is disabled. Never fails the session.
+    fn finish_recording(&mut self) -> Option<PathBuf> {
+        None
+    }
 }
 
 /// Realtime backend boundary. Events follow the same semantics for cloud and
@@ -113,7 +123,7 @@ pub trait HistoryRecorder {
     fn record(&mut self, entry: HistoryEntry);
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct HistoryEntry {
     pub raw_text: String,
     pub processed_text: Option<String>,
@@ -121,6 +131,8 @@ pub struct HistoryEntry {
     pub processing_mode: String,
     pub status: String,
     pub backend: String,
+    pub duration_seconds: Option<f64>,
+    pub audio_path: Option<String>,
 }
 
 pub trait EventSink {
@@ -201,7 +213,13 @@ where
             },
         }
     }
-
+    let audio_destination = plan.save_audio_dir.as_ref().and_then(|dir| {
+        std::fs::create_dir_all(dir)
+            .ok()
+            .map(|_| dir.join(format!("{}.wav", new_audio_stem())))
+    });
+    let mut capture =
+        crate::capture::WavRecorder::new(capture, crate::capture::SAMPLE_RATE, audio_destination);
     if let Err(error) = capture.start().await {
         let _ = transport.cancel().await;
         return fail(sink, &format!("capture: {error}"));
@@ -211,6 +229,7 @@ where
     }
 
     let mut queue: VecDeque<Vec<u8>> = VecDeque::new();
+    let mut audio_bytes: u64 = 0;
 
     loop {
         tokio::select! {
@@ -237,6 +256,7 @@ where
                     if queue.len() >= plan.queue_capacity {
                         return overrun(&mut capture, &mut transport, sink).await;
                     }
+                    audio_bytes += pcm.len() as u64;
                     queue.push_back(pcm);
                 }
                 Ok(None) => {
@@ -298,6 +318,7 @@ where
             );
         }
         if !tail.is_empty() {
+            audio_bytes += tail.len() as u64;
             queue.push_back(tail);
         }
     }
@@ -386,6 +407,10 @@ where
                 processing_mode: plan.mode_id.clone(),
                 status: "completed".to_owned(),
                 backend: plan.backend.clone(),
+                duration_seconds: (audio_bytes >= 2).then(|| audio_bytes as f64 / 32_000.0),
+                audio_path: capture
+                    .finish_recording()
+                    .map(|path| path.display().to_string()),
             });
             let _ = sink.emit(OutputEvent::Finalized { injection });
         }
@@ -516,4 +541,17 @@ where
         SessionUpdate::Ignored => {}
     }
     Ok(())
+}
+
+/// Audio file stem: unix milliseconds plus a random suffix so concurrent
+/// sessions never collide and names sort chronologically.
+fn new_audio_stem() -> String {
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    let mut bytes = [0_u8; 4];
+    getrandom::getrandom(&mut bytes).expect("OS random source available");
+    let suffix: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+    format!("{millis}-{suffix}")
 }

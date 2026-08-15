@@ -607,6 +607,11 @@ pub fn default_cache_dir() -> PathBuf {
     xdg_dir("XDG_CACHE_HOME", ".cache").join("syllune")
 }
 
+/// Retained WAV recordings from successful streaming sessions.
+pub fn default_audio_dir() -> PathBuf {
+    default_data_dir().join("audio")
+}
+
 pub fn default_config_dir() -> PathBuf {
     xdg_dir("XDG_CONFIG_HOME", ".config").join("syllune")
 }

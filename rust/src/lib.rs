@@ -9,6 +9,7 @@ pub mod daemon;
 pub mod doctor;
 pub mod history;
 pub mod history_cmd;
+pub mod history_web;
 pub mod latency;
 pub mod latency_cmd;
 pub mod local_asr;

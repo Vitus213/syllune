@@ -27,7 +27,7 @@ nix run . -- stream --backend local-streaming
 | `syllune record --seconds N` | 定时录音后转写 |
 | `syllune model list\|install\|check\|remove` | 模型目录管理（固定 URL、字节数、SRI SHA-256、成员白名单） |
 | `syllune mode list\|reload\|add\|update\|remove` | 文本处理模式 |
-| `syllune history list\|delete\|export\|totals\|usage` | 识别历史 |
+| `syllune history list\|delete\|export\|totals\|usage\|serve` | 识别历史；`serve` 打开本地 Web 控制台（默认 `http://127.0.0.1:8790`，`--host/--port` 可调） |
 | `syllune daemon` | headless daemon，导出 `dev.syllune.Daemon.Controller` D-Bus 接口 |
 | `syllune doctor` | 检查 `pw-record`、`wtype`、`wl-copy` 与数据目录 |
 
@@ -54,11 +54,17 @@ api_key_env = "MY_KEY"
 
 [history]
 enabled = true
-```
+save_audio = true                  # 每次成功会话保留 WAV 录音（约 115 KB/分钟）
 
 旧 `cloud-vad`、`sensevoice-vad`、`final_backend` 配置会被明确拒绝，不会静默改写。
 
 `local-streaming` 默认使用 ModelManager 安装的 `streaming-paraformer-bilingual-zh-en`；每次会话前重新校验模型完整性，损坏的模型不会被使用。
+
+## 录音保留与 Web 控制台
+
+每次成功完成的流式会话会把采集到的 PCM 镜像为 WAV，保存在 `~/.local/share/syllune/audio/`，并在历史行中记录 `audio_path` 与 `duration_seconds`（schema v2，旧库自动迁移）。取消、失败或空会话不留任何文件；`history delete` 会一并删除对应录音。`[history] save_audio = false` 关闭保留。
+
+`syllune history serve` 在回环地址启动只读 Web 控制台：按天分组的记录列表、真实波形、点击播放/进度拖拽，以及记录总数统计。音频按 record id 从数据库取路径（URL 不含路径），支持 `Range` 请求以便浏览器边下边播。
 
 ## 模式与注入
 

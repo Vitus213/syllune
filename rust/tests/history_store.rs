@@ -10,6 +10,8 @@ fn entry(raw: &str, final_text: &str, mode: &str) -> HistoryEntry {
         processing_mode: mode.to_owned(),
         status: "completed".to_owned(),
         backend: "cloud-realtime".to_owned(),
+        duration_seconds: None,
+        audio_path: None,
     }
 }
 
@@ -33,7 +35,7 @@ fn insert_and_get_roundtrip_records_authoritative_text() {
 }
 
 #[test]
-fn schema_is_version_one_and_file_permissions_are_private() {
+fn schema_is_version_two_and_file_permissions_are_private() {
     use std::os::unix::fs::PermissionsExt;
 
     let root = tempdir().expect("temporary root");
@@ -50,9 +52,105 @@ fn schema_is_version_one_and_file_permissions_are_private() {
     let version: i64 = connection
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .expect("user_version");
-    assert_eq!(version, 1);
+    assert_eq!(version, 2);
 }
 
+#[test]
+fn insert_records_audio_path_and_duration_for_playback() {
+    let root = tempdir().expect("temporary root");
+    let store = HistoryStore::open(root.path().join("history.sqlite3")).expect("open store");
+    let mut entry = entry("你好", "你好", "quick");
+    entry.duration_seconds = Some(1.25);
+    entry.audio_path = Some("/tmp/audio/1.wav".to_owned());
+
+    let stored = store.insert(&entry, "local-streaming").expect("insert");
+    assert_eq!(stored.duration_seconds, Some(1.25));
+    assert_eq!(stored.audio_path.as_deref(), Some("/tmp/audio/1.wav"));
+
+    let fetched = store.get(&stored.id).expect("get").expect("record exists");
+    assert_eq!(fetched.audio_path.as_deref(), Some("/tmp/audio/1.wav"));
+
+    let page = store.query(10, None).expect("query");
+    assert_eq!(page.records.len(), 1);
+    assert_eq!(
+        page.records[0].audio_path.as_deref(),
+        Some("/tmp/audio/1.wav")
+    );
+}
+
+#[test]
+fn v1_database_migrates_to_v2_and_keeps_records_without_audio() {
+    use rusqlite::Connection;
+
+    let root = tempdir().expect("temporary root");
+    let path = root.path().join("history.sqlite3");
+    let connection = Connection::open(&path).expect("open sqlite");
+    connection
+        .execute_batch(
+            "CREATE TABLE recognition_history (
+                id TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL,
+                duration_seconds REAL,
+                raw_text TEXT NOT NULL,
+                processing_mode TEXT,
+                processed_text TEXT,
+                final_text TEXT NOT NULL,
+                status TEXT NOT NULL,
+                character_count INTEGER,
+                asr_provider TEXT,
+                asr_model TEXT
+            );
+            INSERT INTO recognition_history (id, created_at, duration_seconds, raw_text,
+                processing_mode, processed_text, final_text, status, character_count,
+                asr_provider, asr_model)
+            VALUES ('old-id', '2026-01-01T00:00:00Z', NULL, '旧记录', 'quick', NULL,
+                '旧记录', 'completed', 3, 'cloud-realtime', NULL);
+            PRAGMA user_version = 1;",
+        )
+        .expect("seed v1 schema");
+    drop(connection);
+
+    let store = HistoryStore::open(path.clone()).expect("open migrated store");
+    let fetched = store.get("old-id").expect("get").expect("record exists");
+    assert_eq!(fetched.raw_text, "旧记录");
+    assert_eq!(fetched.audio_path, None);
+
+    let mut entry = entry("新记录", "新记录", "quick");
+    entry.audio_path = Some("new.wav".to_owned());
+    let stored = store.insert(&entry, "cloud-realtime").expect("insert");
+    assert_eq!(stored.audio_path.as_deref(), Some("new.wav"));
+
+    let connection = Connection::open(&path).expect("reopen sqlite");
+    let version: i64 = connection
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .expect("user_version");
+    assert_eq!(version, 2);
+}
+
+#[test]
+fn delete_and_delete_all_remove_retained_audio_files() {
+    let root = tempdir().expect("temporary root");
+    let store = HistoryStore::open(root.path().join("history.sqlite3")).expect("open store");
+
+    let audio_one = root.path().join("one.wav");
+    let audio_two = root.path().join("two.wav");
+    std::fs::write(&audio_one, b"wav").expect("write one");
+    std::fs::write(&audio_two, b"wav").expect("write two");
+
+    let mut first = entry("一", "一", "quick");
+    first.audio_path = Some(audio_one.display().to_string());
+    let mut second = entry("二", "二", "quick");
+    second.audio_path = Some(audio_two.display().to_string());
+    let first = store.insert(&first, "cloud-realtime").expect("insert");
+    store.insert(&second, "cloud-realtime").expect("insert");
+
+    store.delete(&[first.id]).expect("delete one");
+    assert!(!audio_one.exists(), "deleted record must drop its audio");
+    assert!(audio_two.exists(), "unrelated audio must survive");
+
+    store.delete_all().expect("delete all");
+    assert!(!audio_two.exists(), "delete_all must drop remaining audio");
+}
 #[test]
 fn query_paginates_with_stable_cursors() {
     let root = tempdir().expect("temporary root");

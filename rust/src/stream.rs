@@ -92,7 +92,7 @@ async fn run_cloud(
         &config.cloud.realtime_model,
     )
     .await?;
-    let plan = session_plan(&options, "cloud-realtime", &pipeline.mode_id);
+    let plan = session_plan(&config, &options, "cloud-realtime", &pipeline.mode_id);
     let code = crate::coordinator::run_session(
         plan,
         PwCapture::default(),
@@ -131,7 +131,7 @@ async fn run_local(
             return Ok(1);
         }
     };
-    let plan = session_plan(&options, "local-streaming", &pipeline.mode_id);
+    let plan = session_plan(&config, &options, "local-streaming", &pipeline.mode_id);
     let code = crate::coordinator::run_session(
         plan,
         PwCapture::default(),
@@ -183,7 +183,10 @@ fn build_pipeline(config: &AppConfig, options: &StreamOptions) -> Result<Pipelin
     Ok(Pipeline {
         mode_id: mode_id.clone(),
         processor: PipelineProcessor { prompts, chat },
-        history: SqliteHistory { store },
+        history: SqliteHistory {
+            store,
+            audio_dir: audio_dir(config),
+        },
     })
 }
 
@@ -222,14 +225,42 @@ impl TextProcessor for PipelineProcessor {
 
 struct SqliteHistory {
     store: Option<crate::history::HistoryStore>,
+    audio_dir: Option<PathBuf>,
 }
 
 impl HistoryRecorder for SqliteHistory {
     fn record(&mut self, entry: HistoryEntry) {
-        if let Some(store) = &self.store {
-            let backend = entry.backend.clone();
-            let _ = store.insert(&entry, &backend);
+        let Some(store) = &self.store else {
+            // History disabled: never keep orphan recordings behind.
+            remove_audio(entry.audio_path.as_deref(), self.audio_dir.as_deref());
+            return;
+        };
+        let backend = entry.backend.clone();
+        match store.insert(&entry, &backend) {
+            Ok(_) => {}
+            Err(_) => remove_audio(entry.audio_path.as_deref(), self.audio_dir.as_deref()),
         }
+    }
+}
+
+fn audio_dir(config: &AppConfig) -> Option<PathBuf> {
+    if config.history.enabled && config.history.save_audio {
+        Some(crate::models::default_audio_dir())
+    } else {
+        None
+    }
+}
+
+/// Remove a saved recording when its history row was not persisted, so a
+/// failure never leaves audio without a matching record. Only files that
+/// live directly inside the managed audio directory are touched.
+fn remove_audio(audio_path: Option<&str>, audio_dir: Option<&std::path::Path>) {
+    let (Some(path), Some(dir)) = (audio_path, audio_dir) else {
+        return;
+    };
+    let path = PathBuf::from(path);
+    if path.parent() == Some(dir) {
+        let _ = std::fs::remove_file(&path);
     }
 }
 
@@ -278,9 +309,15 @@ fn resolve_managed_model(options: &StreamOptions) -> Result<std::path::PathBuf, 
     }
 }
 
-fn session_plan(options: &StreamOptions, backend: &str, mode_id: &str) -> SessionPlan {
+fn session_plan(
+    config: &AppConfig,
+    options: &StreamOptions,
+    backend: &str,
+    mode_id: &str,
+) -> SessionPlan {
     let mut plan = SessionPlan::new(backend, options.inject);
     plan.mode_id = mode_id.to_owned();
+    plan.save_audio_dir = audio_dir(config);
     plan
 }
 
