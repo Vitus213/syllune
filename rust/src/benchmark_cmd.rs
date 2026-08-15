@@ -96,7 +96,7 @@ pub async fn run_asr(args: AsrBenchmarkArgs) -> i32 {
                 return 2;
             }
             Backend::Cloud {
-                config: config.clone(),
+                config: Box::new(config.clone()),
             }
         }
         "local-streaming" => {
@@ -216,7 +216,7 @@ fn write_report(
 
 /// Production replay backend.
 enum Backend {
-    Cloud { config: AppConfig },
+    Cloud { config: Box<AppConfig> },
     Local { payload: std::path::PathBuf },
 }
 
@@ -229,12 +229,11 @@ impl BackendFactory for Backend {
     ) -> Result<String, String> {
         match self {
             Backend::Cloud { config } => {
-                let config = config.clone();
+                let config = config.as_ref().clone();
                 let pcm = pcm.to_vec();
                 tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(async move {
-                        replay_cloud(&config, &pcm, chunk_interval).await
-                    })
+                    tokio::runtime::Handle::current()
+                        .block_on(async move { replay_cloud(&config, &pcm, chunk_interval).await })
                 })
             }
             Backend::Local { payload } => {
@@ -251,7 +250,10 @@ fn replay_local(payload: &std::path::Path, pcm: &[u8]) -> Result<String, String>
         .map_err(|error| error.to_string())?;
     let mut confirmed: Vec<String> = Vec::new();
     for chunk in pcm.chunks(crate::capture::CHUNK_BYTES) {
-        for event in recognizer.accept_pcm(chunk).map_err(|error| error.to_string())? {
+        for event in recognizer
+            .accept_pcm(chunk)
+            .map_err(|error| error.to_string())?
+        {
             if let RealtimeEvent::Completed { transcript } = event {
                 if !transcript.is_empty() {
                     confirmed.push(transcript);

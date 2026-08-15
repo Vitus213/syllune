@@ -2,10 +2,16 @@
 //! semantics (idle -> start, recording -> normal stop, stopping -> reject)
 //! and explicit cancel. The gateway owns no capture or backend state; it
 //! only forwards commands to the session runner.
+//!
+//! Activation sources: XDG Desktop Portal GlobalShortcuts (best effort,
+//! requires a compositor portal backend), the `dev.syllune.Daemon` D-Bus
+//! control bus, and compositor bindings that call either.
 
+use futures_util::StreamExt;
 use std::future::Future;
 use std::pin::Pin;
 
+use ashpd::desktop::global_shortcuts::{GlobalShortcuts, NewShortcut};
 use tokio::sync::mpsc;
 
 use crate::coordinator::ControlCommand;
@@ -202,6 +208,10 @@ where
         .await
         .map_err(|error| format!("cannot claim bus name {BUS_NAME}: {error}"))?;
 
+    // Best-effort portal global shortcut; unavailable portals fall back to
+    // compositor bindings over the control bus above.
+    tokio::spawn(portal_shortcut_listener(command_tx.clone()));
+
     println!("Syllune daemon listening on {BUS_NAME}");
     loop {
         tokio::select! {
@@ -221,4 +231,68 @@ where
         }
     }
     Ok(())
+}
+
+const TOGGLE_SHORTCUT_ID: &str = "toggle";
+
+/// Register a single global shortcut through the XDG Desktop Portal and
+/// forward activations to the daemon command channel. Never fatal: compositors
+/// without a GlobalShortcuts backend (or broken ones, e.g. GNOME 48) simply
+/// skip portal binding and keep working through `dev.syllune.Daemon`.
+async fn portal_shortcut_listener(commands: mpsc::Sender<DaemonCommand>) {
+    let portal = match GlobalShortcuts::new().await {
+        Ok(portal) => portal,
+        Err(error) => {
+            eprintln!(
+                "Syllune: GlobalShortcuts portal unavailable ({error}); use compositor bindings on {BUS_NAME}"
+            );
+            return;
+        }
+    };
+    let session = match portal.create_session().await {
+        Ok(session) => session,
+        Err(error) => {
+            eprintln!("Syllune: cannot create GlobalShortcuts session: {error}");
+            return;
+        }
+    };
+    let shortcut = NewShortcut::new(TOGGLE_SHORTCUT_ID, "开始或停止 Syllune 语音输入");
+    match portal.bind_shortcuts(&session, &[shortcut], None).await {
+        Ok(request) => match request.response() {
+            Ok(bound) => {
+                let bound_ids: Vec<&str> =
+                    bound.shortcuts().iter().map(|entry| entry.id()).collect();
+                if bound_ids.is_empty() {
+                    eprintln!(
+                        "Syllune: portal bound no shortcuts; configure them in your compositor or use {BUS_NAME}"
+                    );
+                    return;
+                }
+                println!("Syllune: portal shortcuts bound: {bound_ids:?}");
+            }
+            Err(error) => {
+                eprintln!("Syllune: portal shortcut binding rejected: {error}");
+                return;
+            }
+        },
+        Err(error) => {
+            eprintln!("Syllune: cannot bind GlobalShortcuts: {error}");
+            return;
+        }
+    }
+    let mut activated = match portal.receive_activated().await {
+        Ok(stream) => stream,
+        Err(error) => {
+            eprintln!("Syllune: cannot subscribe to GlobalShortcuts: {error}");
+            return;
+        }
+    };
+    // This daemon owns exactly one portal session with one shortcut id, and
+    // the portal only delivers Activated for sessions this application
+    // created, so matching the shortcut id is sufficient.
+    while let Some(event) = activated.next().await {
+        if event.shortcut_id() == TOGGLE_SHORTCUT_ID {
+            let _ = commands.send(DaemonCommand::Activate).await;
+        }
+    }
 }
