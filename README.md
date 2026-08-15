@@ -202,6 +202,10 @@ syllune history serve            # http://127.0.0.1:8790/
 syllune history serve --port 9000
 ```
 
+![Syllune history console: records grouped by day, waveforms rendered from the saved recordings](docs/images/history-console.png)
+
+![Console playback: expanded record with waveform, progress bar and final text](docs/images/history-console-playing.png)
+
 The console is one embedded page. It listens only on the loopback address. It shows:
 
 - Records grouped by day.
