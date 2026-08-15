@@ -151,7 +151,7 @@ impl AppConfig {
     pub fn load_optional(path: Option<&Path>) -> Result<Self, ConfigError> {
         match path {
             Some(path) => Self::load(path),
-            None => Ok(Self::default()),
+            None => load_default_config(),
         }
     }
 
