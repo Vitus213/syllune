@@ -57,7 +57,7 @@
           '';
           meta = {
             description = "Fast realtime voice input for Linux";
-            homepage = "https://github.com/vitus/type4me-linux";
+            homepage = "https://github.com/Vitus213/syllune";
             license = pkgs.lib.licenses.mit;
             mainProgram = "syllune";
             platforms = pkgs.lib.platforms.linux;
