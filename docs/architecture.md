@@ -23,6 +23,8 @@
 | 模型供应链 | `models.rs` | 固定目录、HTTPS 下载、SRI SHA-256、成员白名单、manifest、原子激活 |
 | 质量门禁 | `benchmark.rs`、`benchmark_cmd.rs`、`latency.rs`、`latency_cmd.rs` | CER 重放、p50/p95/p99 延迟门禁、版本化报告 |
 | 系统集成 | `doctor.rs`、`stream.rs`（注入） | 依赖诊断、wtype 注入 |
+| 音频保留 | `capture.rs`（`WavRecorder`） | 装饰 `AudioCapture`：chunk 镜像到 `.wav.partial`，成功会话 finalize WAV；取消/失败/空会话不留文件，镜像失败不影响主路径 |
+| Web 控制台 | `history_web.rs`、`assets/history-console.html` | `history serve`：仅回环的零依赖 HTTP/1.1，内嵌单页，`/api/records`/`/api/totals`/`/api/audio`，Range 流式 |
 | 配置 | `config.rs` | 严格 TOML、0600 密钥门禁、`syllune` XDG 根 |
 
 `stream::run_with_control` 把控制源参数化：CLI 走 SIGINT/SIGTERM（第一次停止、第二次取消），daemon 走 channel（Activate/Cancel 语义由 gateway 状态机保证）。
@@ -51,7 +53,7 @@ flowchart LR
 
 ```text
 config  ${XDG_CONFIG_HOME:-~/.config}/syllune      config.toml (0600 密钥门禁)、modes.json
-data    ${XDG_DATA_HOME:-~/.local/share}/syllune   models/、history.sqlite3 (WAL, 0600)
+data    ${XDG_DATA_HOME:-~/.local/share}/syllune   models/、history.sqlite3 (WAL, 0600)、audio/（成功会话的 WAV 保留）
 cache   ${XDG_CACHE_HOME:-~/.cache}/syllune        model-downloads/
 ```
 
@@ -62,6 +64,13 @@ cache   ${XDG_CACHE_HOME:-~/.cache}/syllune        model-downloads/
 ## D-Bus 与 daemon
 
 `syllune daemon` 在会话总线上声明 `dev.syllune.Daemon`（对象 `/dev/syllune/Daemon`，接口 `dev.syllune.Daemon.Controller`），导出 `Activate` 与 `Cancel`。gateway 状态机：idle→Started、recording→Stopping（正常停止）、stopping 期间拒绝并发 Start；会话回收后回到 idle。Sway 快捷键经 busctl 调用 Activate（见 `nix/home-manager.nix`）。
+
+## 录音保留与 Web 控制台
+
+- `WavRecorder<C: AudioCapture>` 在 `run_session` 边界装饰 capture：`next_chunk`/`stop_capture` 透明镜像 chunk；成功路径上 `finish_recording` 补 RIFF 头并 rename 到正式文件，路径随 `HistoryEntry.audio_path` 入历史；`abort`/drop 清理 `.partial`。
+- `SessionPlan.save_audio_dir` 由 `stream::session_plan` 按 `[history] save_audio` 与 `enabled` 注入；history 关闭或 insert 失败时 `SqliteHistory` 删除孤儿录音；`HistoryStore::delete/delete_all` 连音频一起删除。
+- schema v2 为 `recognition_history` 增加 `audio_path`、`duration_seconds`，v1 幂等迁移，旧行 audio 为 null。
+- `history_web` 为手写 HTTP/1.1（tokio TCP、GET only、每连接单响应），默认仅绑定回环；音频路径只从数据库行解析，URL 只含 record id（uuid 校验），支持 `Range: bytes=`（206 部分响应）；前端 `include_str!` 内嵌，波形由客户端从 PCM16 渲染。
 
 ## 质量门禁（真实环境）
 
