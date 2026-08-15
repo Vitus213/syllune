@@ -11,7 +11,7 @@ nix run github:Vitus213/syllune -- doctor   # 检查 pw-record / wtype / wl-copy
 nix run github:Vitus213/syllune -- stream   # 说话，Ctrl-C，文本自动注入
 ```
 
-目录：[适配](#适配) · [安装](#安装) · [首次运行](#首次运行) · [命令](#命令) · [配置](#配置) · [模式与注入](#模式与注入) · [历史、录音与 Web 控制台](#历史录音与-web-控制台) · [模型目录](#模型目录) · [从 type4me-linux 迁移](#从-type4me-linux-迁移) · [开发](#开发)
+目录：[适配](#适配) · [安装](#安装) · [首次运行](#首次运行) · [命令](#命令) · [配置](#配置) · [模式与注入](#模式与注入) · [历史、录音与 Web 控制台](#历史录音与-web-控制台) · [模型目录](#模型目录) · [设计](#设计) · [从 type4me-linux 迁移](#从-type4me-linux-迁移) · [开发](#开发)
 
 ## 适配
 
@@ -203,6 +203,37 @@ Syllune 只使用 `syllune` 命名的 XDG 目录，**不会**自动读取、移�
 - 模型：运行 `syllune model install streaming-paraformer-bilingual-zh-en`；模型目录独立，旧文件不会自动接管。
 - 历史：旧 SQLite 历史不会自动导入；如需保留用旧工具导出 CSV。
 - 回滚：安装旧版 `type4me-linux` 发布物即可，两个应用的状态目录互不干扰。
+
+## 设计
+
+单二进制、分层边界。`coordinator::run_session` 是实时会话唯一的编排边界；每个环境（pw-record、云/本地传输、注入器、处理器、历史、事件槽）都是 trait，CLI 与 daemon 共享同一条管道，测试可用 fake 替换任意一边。
+
+```mermaid
+flowchart TB
+    main[main.rs CLI / 退出码] --> cmd[命令层：stream、batch、model、mode、history、daemon]
+    cmd --> coord[coordinator.rs — 唯一副作用边界]
+    coord --> cap[capture.rs — pw-record + WavRecorder]
+    coord --> rt[realtime.rs — DashScope WebSocket]
+    coord --> lasr[local_asr.rs — Sherpa-ONNX 在线]
+    coord --> sess[session.rs — 转写状态机]
+    cmd --> hist[history.rs — SQLite schema v2]
+    cmd --> web[history_web.rs — 回环 HTTP 控制台]
+    cmd --> models[models.rs — 固定供应链]
+    web --> hist
+```
+
+塑造代码形态的设计决策：
+
+1. **有界、无损的音频流。** chunk 以 16×32 ms 入队；队列溢出或单块发送超 500 ms deadline 时整会话失败，不丢块、不重排。
+2. **连接先于采集。** ready 门在 `pw-record` 启动前运行，鉴权/连接失败不产生任何音频。
+3. **固定停止次序、一次注入。** 停止接受新块 → 优雅停采集 → 尾帧冲刷 → FIFO drain → 恰好一次 `finish` → 最终事件 → 至多一次注入；取消路径不注入任何部分文本。
+4. **录音是装饰器。** `WavRecorder` 包装 `AudioCapture`，把 chunk 镜像到 `.partial` 文件；只有成功会话才 finalize WAV。镜像任何失败只禁用保存，绝不触碰识别、注入与历史；cancel/drop 清理临时文件。音频行与文件同生同死（insert 失败、`history delete`、history 关闭都会清理）。
+5. **控制源参数化。** `stream::run_with_control` 接收命令 channel：CLI 映射 SIGINT/SIGTERM（第一次停止、第二次取消），daemon 映射热键 Activate/Cancel，gateway 状态机保证同一时刻至多一个会话。
+6. **私有 XDG 持久化。** 配置带 0600 密钥门禁，历史为 WAL SQLite 0600，录音在 `data/audio/`；模型经 `versions/<id>/<version>-<digest12>` + `current` 符号链接原子激活，每次会话前重新校验。用户数据不进 Nix store。
+7. **零依赖控制台。** `history_web` 是 tokio TCP 上的手写 HTTP/1.1（GET only、每连接单响应、仅回环），前端经 `include_str!` 内嵌；音频 URL 只含 record id，文件路径从数据库行解析。
+8. **严格配置契约。** 未知键报错；已移除的旧枚举明确拒绝，不静默改写。
+
+完整运行时/持久化/集成契约（含会话生命周期图与实测质量门禁）见 [`docs/architecture.md`](docs/architecture.md)。
 
 ## 开发
 

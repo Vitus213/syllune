@@ -11,7 +11,7 @@ nix run github:Vitus213/syllune -- doctor   # verify pw-record / wtype / wl-copy
 nix run github:Vitus213/syllune -- stream   # speak, Ctrl-C, text is typed
 ```
 
-Contents: [Compatibility](#compatibility) · [Install](#install) · [First run](#first-run) · [Commands](#commands) · [Configuration](#configuration) · [Modes & injection](#modes--injection) · [History, recordings & web console](#history-recordings--web-console) · [Model catalog](#model-catalog) · [Migration from type4me-linux](#migration-from-type4me-linux) · [Development](#development)
+Contents: [Compatibility](#compatibility) · [Install](#install) · [First run](#first-run) · [Commands](#commands) · [Configuration](#configuration) · [Modes & injection](#modes--injection) · [History, recordings & web console](#history-recordings--web-console) · [Model catalog](#model-catalog) · [Design](#design) · [Migration from type4me-linux](#migration-from-type4me-linux) · [Development](#development)
 
 ## Compatibility
 
@@ -203,6 +203,37 @@ Syllune only uses `syllune`-named XDG directories and never reads, moves or dele
 - Models: run `syllune model install streaming-paraformer-bilingual-zh-en`; the catalog is independent and old files are not adopted automatically.
 - History: the old SQLite history is not imported; export CSV with the old tool if needed.
 - Rollback: reinstall the old `type4me-linux` release; the two apps never touch each other's state.
+
+## Design
+
+One binary, layered boundaries. `coordinator::run_session` is the single orchestration boundary of a realtime session; every environment (pw-record, cloud/local transport, injector, processor, history, sink) is a trait so CLI and daemon share one pipeline and tests fake any side.
+
+```mermaid
+flowchart TB
+    main[main.rs CLI / exit codes] --> cmd[command layer: stream, batch, model, mode, history, daemon]
+    cmd --> coord[coordinator.rs — single side-effect boundary]
+    coord --> cap[capture.rs — pw-record + WavRecorder]
+    coord --> rt[realtime.rs — DashScope WebSocket]
+    coord --> lasr[local_asr.rs — Sherpa-ONNX online]
+    coord --> sess[session.rs — transcript state machine]
+    cmd --> hist[history.rs — SQLite schema v2]
+    cmd --> web[history_web.rs — loopback HTTP console]
+    cmd --> models[models.rs — pinned supply chain]
+    web --> hist
+```
+
+Design decisions that shape the code:
+
+1. **Bounded, lossless audio flow.** Chunks queue at 16×32 ms; queue overrun or a 500 ms send deadline breach fails the whole session instead of dropping or reordering audio.
+2. **Connect before capture.** The ready gate runs before `pw-record` is spawned, so auth/connect failures never produce audio.
+3. **Fixed stop order, one injection.** Stop accepting chunks → graceful capture stop → tail-frame flush → FIFO drain → exactly one `finish` → final events → at most one injection. Cancel paths never inject partial text.
+4. **Recording as a decorator.** `WavRecorder` wraps `AudioCapture` and mirrors chunks to a `.partial` file; only successful sessions finalize the WAV. Any mirror failure disables saving and never touches recognition, injection or history; cancel/drop removes the temp file. Audio rows and files live and die together (insert failure, `history delete`, disabled history all clean up).
+5. **Parameterized control source.** `stream::run_with_control` takes the command channel: the CLI maps SIGINT/SIGTERM (first stop, second cancel), the daemon maps hotkey Activate/Cancel through a gateway state machine that allows exactly one session at a time.
+6. **Private XDG persistence.** Config with a 0600 key gate, WAL SQLite history at 0600, recordings under `data/audio/`; models activate atomically via `versions/<id>/<version>-<digest12>` + `current` symlink and are re-verified before every session. Nothing user-owned lives in the Nix store.
+7. **Zero-dependency console.** `history_web` is hand-rolled HTTP/1.1 over tokio TCP (GET only, one response per connection, loopback-only) with the frontend embedded via `include_str!`; audio URLs carry only the record id and the file path resolves from the database row.
+8. **Strict config contract.** Unknown keys error; removed legacy values are rejected outright, never silently rewritten.
+
+The full runtime/persistence/integration contract, including the session lifecycle diagram and measured quality gates, lives in [`docs/architecture.md`](docs/architecture.md).
 
 ## Development
 
