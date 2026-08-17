@@ -177,8 +177,10 @@ realtime_model = "qwen3-asr-flash-realtime"
 prefer = "wtype"                       # wtype | clipboard
 wtype_command = "wtype"
 wl_copy_command = "wl-copy"
-paste_command = "-M ctrl -k v"         # 粘贴剪贴板的 wtype 按键序列
-x11_clipboard_command = ""             # 可选：把文本镜像到 X11 剪贴板（如 "xsel --clipboard --input"）
+paste_command = "-M ctrl -k v"         # 传给 paste_tool 的粘贴按键参数
+paste_tool = "wtype"                    # 粘贴按键提供者：wtype | xdotool | ...
+focus_command = ""                     # 可选：粘贴前先把目标窗口提到前台
+x11_clipboard_command = ""             # 可选：把文本镜像到 X11 剪贴板（如 "xsel --clipboard --input"）；注入后会还原原剪贴板
 clipboard_fallback = true
 timeout_seconds = 10.0
 

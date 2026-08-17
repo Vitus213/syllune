@@ -615,12 +615,19 @@ async fn inject_via_wtype_with(config: &InjectConfig, text: &str) -> InjectionRe
     method_result(true, "wtype", "")
 }
 
-/// Inject text via the clipboard: copy with `wl-copy`, optionally mirror it
-/// to the X11 clipboard for XWayland apps (satellite does not forward
-/// Wayland selections), then synthesize the paste keypress with `wtype`
-/// using the `paste_command` arguments.
+/// Inject text via the clipboard without clobbering the user's clipboard:
+/// save the previous Wayland (and X11, when mirrored) selection, copy the
+/// text with `wl-copy`, run `focus_command` (if set) to raise the target
+/// window, synthesize the paste keypress with `paste_tool`, then restore the
+/// previous selection after the paste has been consumed.
 async fn inject_via_clipboard(config: &InjectConfig, text: &str) -> InjectionResult {
     let limit = Duration::from_secs_f64(config.timeout_seconds.max(0.1));
+
+    let prev_wayland = capture_stdout(&wayland_paste_command(&config.wl_copy_command), limit).await;
+    let prev_x11 = match x11_read_command(&config.x11_clipboard_command) {
+        Some(command) => capture_stdout(&command, limit).await,
+        None => None,
+    };
     if let Err(message) =
         run_command_with_stdin(&config.wl_copy_command, &[], text, false, limit).await
     {
@@ -639,11 +646,81 @@ async fn inject_via_clipboard(config: &InjectConfig, text: &str) -> InjectionRes
         )
         .await;
     }
+    if !config.focus_command.trim().is_empty() {
+        // Best effort: raise the target window (e.g. WeChat) before pasting so
+        // the text lands there even when another window is currently focused.
+        let _ = run_command(&config.focus_command, &[], Duration::from_secs(1)).await;
+    }
     let paste_args: Vec<&str> = config.paste_command.split_whitespace().collect();
-    match run_command(&config.wtype_command, &paste_args, Duration::from_secs(1)).await {
+    let pasted = match run_command(&config.paste_tool, &paste_args, Duration::from_secs(1)).await {
         Ok(()) => method_result(true, "clipboard", ""),
         Err(message) => method_result(false, "clipboard", &message),
+    };
+
+    // Let the focused app consume the selection, then restore the user's
+    // previous clipboard so injection does not leave the transcript behind.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    restore_clipboard(&config.wl_copy_command, prev_wayland, limit).await;
+    if !config.x11_clipboard_command.trim().is_empty() {
+        restore_clipboard(&config.x11_clipboard_command, prev_x11, limit).await;
     }
+    pasted
+}
+
+/// Derive the `wl-paste` command from the configured `wl-copy` command, so a
+/// custom `wl_copy_command` path keeps its paired reader.
+fn wayland_paste_command(copy_command: &str) -> String {
+    match copy_command.strip_suffix("wl-copy") {
+        Some(prefix) => format!("{prefix}wl-paste"),
+        None => "wl-paste".to_owned(),
+    }
+}
+
+async fn restore_clipboard(command: &str, previous: Option<String>, limit: Duration) {
+    // Nothing readable before injection: leave the selection as-is.
+    let Some(previous) = previous else {
+        return;
+    };
+    let _ = run_command_with_stdin(command, &[], &previous, false, limit).await;
+}
+
+/// Run a command and return its trimmed stdout on success. Best effort; used
+/// to snapshot the clipboard before injection overwrites it.
+async fn capture_stdout(command: &str, limit: Duration) -> Option<String> {
+    let mut parts = command.split_whitespace();
+    let program = parts.next()?;
+    let child = Command::new(program)
+        .args(parts)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    match timeout(limit, child.wait_with_output()).await {
+        Ok(Ok(output)) if output.status.success() => {
+            let text = String::from_utf8_lossy(&output.stdout).into_owned();
+            if text.is_empty() {
+                None
+            } else {
+                Some(text)
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Derive the X11 would-be reader from the configured writer command, so the
+/// previous X11 selection can be snapshotted when an input command is set.
+/// Returns `None` when the command is empty or has no recognizable word-swap.
+fn x11_read_command(input_command: &str) -> Option<String> {
+    let trimmed = input_command.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let swapped = trimmed
+        .replace(" --input", " --output")
+        .replace(" -i", " -o");
+    Some(swapped)
 }
 
 /// Build the `wtype` invocations for `text`: each line is typed literally and

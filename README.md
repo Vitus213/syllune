@@ -177,8 +177,10 @@ realtime_model = "qwen3-asr-flash-realtime"
 prefer = "wtype"                       # wtype | clipboard
 wtype_command = "wtype"
 wl_copy_command = "wl-copy"
-paste_command = "-M ctrl -k v"         # wtype keypress that pastes the clipboard
-x11_clipboard_command = ""             # optional: mirrors the text to the X11 clipboard (e.g. "xsel --clipboard --input")
+paste_command = "-M ctrl -k v"         # args passed to paste_tool
+paste_tool = "wtype"                    # the paste-keystroke provider: wtype | xdotool | ...
+focus_command = ""                     # optional: raise the target window before pasting
+x11_clipboard_command = ""             # optional: mirror text to X11 clipboard (e.g. "xsel --clipboard --input"); the previous selection is restored after injection
 clipboard_fallback = true
 timeout_seconds = 10.0
 

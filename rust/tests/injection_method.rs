@@ -50,6 +50,8 @@ fn config_with(prefer: &str, wl_copy: &str, wtype: &str) -> InjectConfig {
         wtype_command: wtype.to_owned(),
         wl_copy_command: wl_copy.to_owned(),
         paste_command: "-M ctrl -k v".to_owned(),
+        paste_tool: wtype.to_owned(),
+        focus_command: String::new(),
         x11_clipboard_command: String::new(),
         clipboard_fallback: true,
         timeout_seconds: 5.0,
@@ -129,6 +131,62 @@ async fn clipboard_failure_is_reported() {
 
     assert!(!result.ok);
     assert_eq!(result.method, "clipboard");
+}
+
+#[tokio::test]
+async fn clipboard_focus_and_custom_paste_tool_run_in_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let (wl_copy, wtype) = fake_commands(dir.path(), false);
+    let order = dir.path().join("order.txt");
+
+    let focus = dir.path().join("focus");
+    write_executable(
+        &focus,
+        &format!("#!/bin/sh\necho focus >> {}\n", order.display()),
+    );
+    let paste = dir.path().join("paste-tool");
+    write_executable(
+        &paste,
+        &format!("#!/bin/sh\necho \"paste:$@\" >> {}\n", order.display()),
+    );
+
+    let mut config = config_with("clipboard", &wl_copy, &wtype);
+    config.paste_tool = paste.display().to_string();
+    config.paste_command = "key --clearmodifiers ctrl+v".to_owned();
+    config.focus_command = focus.display().to_string();
+
+    let result = inject_text(&config, "微信").await;
+
+    assert!(result.ok, "{result:?}");
+    let log = std::fs::read_to_string(&order).unwrap();
+    let lines: Vec<&str> = log.lines().collect();
+    assert_eq!(lines[0], "focus", "focus must run before paste");
+    assert_eq!(lines[1], "paste:key --clearmodifiers ctrl+v");
+}
+
+#[tokio::test]
+async fn clipboard_injection_restores_previous_selection() {
+    let dir = tempfile::tempdir().unwrap();
+    let (wl_copy, wtype) = fake_commands(dir.path(), false);
+
+    // Paired wl-paste reports the prior clipboard; the fake wl-copy appends
+    // every stdin write so we can observe copy-then-restore ordering.
+    let wl_paste = dir.path().join("wl-paste");
+    write_executable(&wl_paste, "#!/bin/sh\necho PRIOR");
+    let log = dir.path().join("clipboard.txt");
+    write_executable(
+        &dir.path().join("wl-copy"),
+        &format!("#!/bin/sh\ncat >> {}\necho >> {}\n", log.display(), log.display()),
+    );
+
+    let config = config_with("clipboard", &wl_copy, &wtype);
+    let result = inject_text(&config, "转录文本").await;
+
+    assert!(result.ok, "{result:?}");
+    let content = std::fs::read_to_string(&log).unwrap();
+    let lines: Vec<&str> = content.lines().collect();
+    assert_eq!(lines[0], "转录文本", "copy the transcript first");
+    assert_eq!(lines[1], "PRIOR", "then restore the previous clipboard");
 }
 
 #[test]
