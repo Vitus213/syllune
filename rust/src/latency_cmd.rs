@@ -1,7 +1,8 @@
 //! `syllune benchmark latency`: run real cloud sessions with Wayland
 //! injection and record per-stage timestamps. Each trial replays one corpus
 //! sample at the 32 ms pace through `cloud-realtime`, stops normally,
-//! injects the final text via wtype and records stage timestamps.
+//! injects the final text via the configured `[inject]` method and records
+//! stage timestamps.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -9,7 +10,7 @@ use std::time::{Duration, Instant};
 use crate::config::{load_default_config, AppConfig};
 use crate::latency::{LatencyThresholds, TrialOutcome, TrialStage};
 use crate::realtime::{RealtimeEvent, RealtimeSession};
-use crate::stream::inject_via_wtype;
+use crate::stream::inject_text;
 
 const CHUNK_INTERVAL: Duration = Duration::from_millis(32);
 
@@ -253,7 +254,7 @@ async fn run_trial(
     }
 
     if inject {
-        let result = inject_via_wtype(&text).await;
+        let result = inject_text(&config.inject, &text).await;
         stages.push((TrialStage::InjectionComplete, start.elapsed().as_secs_f64()));
         if !result.ok {
             return failed(

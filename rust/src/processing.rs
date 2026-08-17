@@ -160,7 +160,9 @@ pub fn from_config(
                     "processing.base_url and processing.model are required".to_owned(),
                 ));
             }
-            let api_key = if config.api_key_env.is_empty() {
+            let api_key = if !config.api_key.trim().is_empty() {
+                config.api_key.clone()
+            } else if config.api_key_env.is_empty() {
                 String::new()
             } else {
                 std::env::var(&config.api_key_env).unwrap_or_default()

@@ -36,6 +36,12 @@ in
       description = "是否启动常驻的 Syllune headless daemon 用户服务。";
     };
 
+    service.mode = lib.mkOption {
+      type = lib.types.str;
+      default = "quick";
+      description = "daemon 会话使用的文本处理模式（例如 quick、prompt-optimize）。";
+    };
+
     shortcuts.sway = {
       enable = lib.mkOption {
         type = lib.types.bool;
@@ -69,7 +75,7 @@ in
       };
 
       Service = {
-        ExecStart = "${lib.getExe cfg.package} daemon";
+        ExecStart = "${lib.getExe cfg.package} daemon --mode ${cfg.service.mode}";
         Restart = "on-failure";
         RestartSec = 2;
         TimeoutStopSec = 20;

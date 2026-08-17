@@ -17,12 +17,15 @@ impl Check {
 }
 
 pub fn run_checks() -> Vec<Check> {
+    let clipboard_preferred = crate::config::load_default_config()
+        .map(|config| config.inject.prefer == "clipboard")
+        .unwrap_or(false);
     vec![
         executable_check("pw-record", true),
         executable_check("wtype", true),
-        // wl-copy powers the optional clipboard fallback; its absence is a
-        // warning, not a failure.
-        executable_check("wl-copy", false),
+        // wl-copy powers the clipboard injection method and the wtype
+        // fallback; it is required when clipboard is the preferred method.
+        executable_check("wl-copy", clipboard_preferred),
         directory_check(),
     ]
 }

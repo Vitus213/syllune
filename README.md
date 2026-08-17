@@ -15,7 +15,7 @@
   <a href="https://pipewire.org"><img src="https://img.shields.io/badge/audio-PipeWire-7EB9D6?style=flat&colorA=222222" alt="PipeWire"></a>
 </p>
 
-Syllune records audio with PipeWire (`pw-record`) at 16 kHz mono PCM16, transcribes while you speak (DashScope cloud realtime by default, or the local Sherpa-ONNX streaming Paraformer), and types the final text into the focused window with `wtype`. One binary: no Python runtime, no desktop shell.
+Syllune records audio with PipeWire (`pw-record`) at 16 kHz mono PCM16, transcribes while you speak (DashScope cloud realtime by default, or the local Sherpa-ONNX streaming Paraformer), and types the final text into the focused window with `wtype` or the clipboard method. One binary: no Python runtime, no desktop shell.
 
 **Quick start**
 
@@ -31,7 +31,7 @@ Contents: [Compatibility](#compatibility) · [Install](#install) · [First run](
 | Layer | Requirement | Note |
 | --- | --- | --- |
 | OS | NixOS or Linux, `x86_64` or `aarch64` | The flake declares only these two systems |
-| Display server | Wayland | Injection uses `wtype`; the clipboard fallback uses `wl-copy` |
+| Display server | Wayland | Injection uses `wtype`; the clipboard method and fallback use `wl-copy` |
 | Audio | PipeWire | Capture spawns `pw-record` (16 kHz mono PCM16) |
 | Compositor shortcuts | XDG Desktop Portal `GlobalShortcuts` (best effort) | Without the portal, the `dev.syllune.Daemon` D-Bus bus works; the Home Manager module ships a Sway binding |
 | Cloud ASR | DashScope realtime endpoint (`qwen3-asr-flash-realtime`) | Requires an API key |
@@ -151,7 +151,7 @@ syllune stream --backend local-streaming
 | `syllune mode list\|reload\|add\|update\|remove` | Manage text processing modes |
 | `syllune history list\|delete\|export\|totals\|usage` | Query the recognition history (SQLite) |
 | `syllune history serve` | Start the local web console. Options: `--host`, `--port`. Default: `http://127.0.0.1:8790` |
-| `syllune daemon` | Run the headless daemon. It exports `dev.syllune.Daemon.Controller` on D-Bus |
+| `syllune daemon` | Run the headless daemon. It exports `dev.syllune.Daemon.Controller` on D-Bus. Options: `--mode` (default `quick`) |
 | `syllune doctor` | Check dependencies and the data directory |
 | `syllune benchmark asr\|latency` | Run the CER and stop-to-inject latency gates. Without credentials or a Wayland injector they report skip and never report a pass |
 
@@ -177,14 +177,18 @@ realtime_model = "qwen3-asr-flash-realtime"
 prefer = "wtype"                       # wtype | clipboard
 wtype_command = "wtype"
 wl_copy_command = "wl-copy"
+paste_command = "-M ctrl -k v"         # wtype keypress that pastes the clipboard
+x11_clipboard_command = ""             # optional: mirrors the text to the X11 clipboard (e.g. "xsel --clipboard --input")
 clipboard_fallback = true
 timeout_seconds = 10.0
 
 [processing]
 provider = "none"                      # none | openai-compatible | ollama
-base_url = ""
-model = ""
-api_key_env = ""                       # name of the environment variable that holds the key
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"  # BaiLian OpenAI-compatible endpoint
+model = "deepseek-v4-flash-0731"       # recognition/reformatting model (cloud recognition)
+api_key = ""                           # direct key; takes precedence over api_key_env
+api_key_env = ""                       # name of the environment variable that holds the key (fallback)
+prompt = ""                            # optional: overrides the prompt-optimize organizing template ({text} placeholder)
 timeout_seconds = 30.0
 
 [history]
@@ -194,9 +198,11 @@ save_audio = true                      # keep one WAV per successful session
 
 The old values `cloud-vad`, `sensevoice-vad` and `final_backend` are rejected. Syllune never rewrites them silently.
 
+`[inject]` selects how the final text reaches the focused window. `prefer = "wtype"` types it through the Wayland virtual keyboard. `prefer = "clipboard"` copies it with `wl-copy` and synthesizes the `paste_command` keypress instead; paste delivers the text verbatim, so apps whose input method (Fcitx5) reinterprets typed keys -- WeChat and other IME-controlled XWayland apps -- receive clean text. Rootless Xwayland (xwayland-satellite) does not forward Wayland selections to X11 clients, so when `x11_clipboard_command` is set (for example `xsel --clipboard --input`) the clipboard method also mirrors the text to the X11 clipboard, best effort. With `clipboard_fallback = true`, a failed wtype injection retries through the clipboard.
+
 ## Modes and injection
 
-The `quick` mode types the recognized text directly. It makes no external calls. The other modes (polish, prompt optimization, translate to English) send the final text to the `[processing]` provider. If the processing fails, Syllune keeps the raw text and prints a warning. Syllune types the final text at most once. The history stores only successful texts.
+The `quick` mode types the recognized text directly. It makes no external calls. The other modes (polish, prompt optimization, translate to English) send the final text to the `[processing]` provider. `[processing]` is a dedicated "cloud recognition" config: its `base_url`, `model` and `api_key` are specified independently of realtime transcription and batch transcription (`[cloud]`), and its `prompt` field overrides the prompt-optimize organizing template (defaults to the original type4me design, "rewrite the requirement as a clear, executable prompt"; `{text}` is replaced by the transcript before the request is assembled and sent). If the processing fails, Syllune keeps the raw text and prints a warning. Syllune types the final text at most once. The history stores only successful texts.
 
 ## History, recordings and web console
 
@@ -222,6 +228,7 @@ The console is one embedded page. It listens only on the loopback address. It sh
 - Playback on click, with a seekable progress bar.
 - Totals for records, characters and audio time.
 - Cursor pagination.
+- Edit and save the organizing prompt template; the next voice session picks it up immediately.
 
 Audio URLs contain only the record id. The server reads the file path from the database row. It supports `Range` requests, so browsers can play while they download.
 

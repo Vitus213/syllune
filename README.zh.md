@@ -15,7 +15,7 @@
   <a href="https://pipewire.org"><img src="https://img.shields.io/badge/audio-PipeWire-7EB9D6?style=flat&colorA=222222" alt="PipeWire"></a>
 </p>
 
-Syllune 用 PipeWire（`pw-record`）以 16 kHz 单声道 PCM16 录音，说话期间持续转写（默认 DashScope 云端实时，或本地 Sherpa-ONNX 流式 Paraformer），结束后用 `wtype` 把最终文本打进焦点窗口。单个二进制：无 Python 运行时、无桌面外壳。
+Syllune 用 PipeWire（`pw-record`）以 16 kHz 单声道 PCM16 录音，说话期间持续转写（默认 DashScope 云端实时，或本地 Sherpa-ONNX 流式 Paraformer），结束后用 `wtype` 或剪贴板方式把最终文本打进焦点窗口。单个二进制：无 Python 运行时、无桌面外壳。
 
 **快速开始**
 
@@ -31,7 +31,7 @@ nix run github:Vitus213/syllune -- stream   # 说话，按 Ctrl-C，Syllune 注�
 | 层 | 要求 | 说明 |
 | --- | --- | --- |
 | 系统 | NixOS 或 Linux，`x86_64` 或 `aarch64` | flake 仅声明这两个 system |
-| 显示服务器 | Wayland | 注入用 `wtype`，剪贴板兜底用 `wl-copy` |
+| 显示服务器 | Wayland | 注入用 `wtype`，剪贴板方式与兜底用 `wl-copy` |
 | 音频 | PipeWire | 采集进程为 `pw-record`（16 kHz 单声道 PCM16） |
 | 合成器快捷键 | XDG Desktop Portal `GlobalShortcuts`（尽力而为） | 无门户时 `dev.syllune.Daemon` D-Bus 总线可用；Home Manager 模块自带 Sway 绑定 |
 | 云端 ASR | DashScope 实时端点（`qwen3-asr-flash-realtime`） | 需要 API key |
@@ -151,7 +151,7 @@ syllune stream --backend local-streaming
 | `syllune mode list\|reload\|add\|update\|remove` | 管理文本处理模式 |
 | `syllune history list\|delete\|export\|totals\|usage` | 查询识别历史（SQLite） |
 | `syllune history serve` | 启动本地 Web 控制台。选项：`--host`、`--port`。默认：`http://127.0.0.1:8790` |
-| `syllune daemon` | 运行 headless daemon，在 D-Bus 导出 `dev.syllune.Daemon.Controller` |
+| `syllune daemon` | 运行 headless daemon，在 D-Bus 导出 `dev.syllune.Daemon.Controller`。选项：`--mode`（默认 `quick`） |
 | `syllune doctor` | 检查依赖与数据目录 |
 | `syllune benchmark asr\|latency` | 运行 CER 与 stop→inject 延迟门禁。缺凭据或 Wayland 注入环境时报告 skip，不报告通过 |
 
@@ -177,14 +177,18 @@ realtime_model = "qwen3-asr-flash-realtime"
 prefer = "wtype"                       # wtype | clipboard
 wtype_command = "wtype"
 wl_copy_command = "wl-copy"
+paste_command = "-M ctrl -k v"         # 粘贴剪贴板的 wtype 按键序列
+x11_clipboard_command = ""             # 可选：把文本镜像到 X11 剪贴板（如 "xsel --clipboard --input"）
 clipboard_fallback = true
 timeout_seconds = 10.0
 
 [processing]
 provider = "none"                      # none | openai-compatible | ollama
-base_url = ""
-model = ""
-api_key_env = ""                       # 存放密钥的环境变量名
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"  # 百炼 OpenAI 兼容端点
+model = "deepseek-v4-flash-0731"       # 整理/识别模型（云端识别）
+api_key = ""                           # 直接写入密钥；优先于 api_key_env
+api_key_env = ""                       # 存放密钥的环境变量名（备选）
+prompt = ""                            # 可选：覆盖「提示词优化」的整理提示词模板（含 {text}）
 timeout_seconds = 30.0
 
 [history]
@@ -194,9 +198,11 @@ save_audio = true                      # 每次成功会话保留一份 WAV
 
 旧值 `cloud-vad`、`sensevoice-vad`、`final_backend` 会被拒绝。Syllune 不静默改写。
 
+`[inject]` 决定最终文本如何进入焦点窗口。`prefer = "wtype"` 通过 Wayland 虚拟键盘逐键输入；`prefer = "clipboard"` 先用 `wl-copy` 复制文本，再合成 `paste_command` 按键粘贴——粘贴按原样投递文本，因此输入法（Fcitx5）会重解释按键的应用（微信等 XWayland IME 应用）也能收到干净文本。无根 Xwayland（xwayland-satellite）不会把 Wayland 选区转发给 X11 客户端，因此设置 `x11_clipboard_command`（例如 `xsel --clipboard --input`）后，剪贴板方式会尽力把文本镜像到 X11 剪贴板。`clipboard_fallback = true` 时，wtype 注入失败会自动改用剪贴板重试。
+
 ## 模式与注入
 
-`quick` 模式直接注入识别文本，无外部调用。其他模式（润色、提示词优化、翻译为英文）把最终文本发给 `[processing]` 提供者。处理失败时 Syllune 保留原文并输出 warning。Syllune 至多注入一次最终文本；历史只记录成功的文本。
+`quick` 模式直接注入识别文本，无外部调用。其他模式（润色、提示词优化、翻译为英文）把最终文本发给 `[processing]` 提供者：`[processing]` 是独立的「云端识别」配置，`base_url`、`model`、`api_key` 与实时转写、批量转写（`[cloud]`）分开指定；`prompt` 字段可自定义「提示词优化」用的整理提示词模板，默认为 type4me 原设计「将以下需求改写为清晰、可执行的提示词」，模板中的 `{text}` 会被替换为转写正文后再拼装发送。处理失败时 Syllune 保留原文并输出 warning。Syllune 至多注入一次最终文本；历史只记录成功的文本。
 
 ## 历史、录音与 Web 控制台
 
@@ -222,6 +228,7 @@ syllune history serve --port 9000
 - 点击播放，进度可拖拽。
 - 记录数、字数、语音时长统计。
 - 游标分页。
+- 编辑并保存「转写提示词」（整理用提示词模板），保存后下次语音输入立即生效。
 
 音频 URL 只含 record id。服务端从数据库行读取文件路径。支持 `Range` 请求，浏览器可边下边播。
 

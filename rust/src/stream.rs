@@ -1,5 +1,6 @@
 //! Production wiring: config -> coordinator with pw-record capture,
-//! cloud/local transports, stdout/stderr event sink and wtype injection.
+//! cloud/local transports, stdout/stderr event sink and configurable
+//! text injection (wtype or clipboard).
 
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -7,11 +8,12 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use serde::Serialize;
+use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::capture::RawCapture;
-use crate::config::{AppConfig, ConfigError};
+use crate::config::{AppConfig, ConfigError, InjectConfig};
 use crate::coordinator::{
     AudioCapture, BackendTransport, ControlCommand, EventSink, HistoryEntry, HistoryRecorder,
     InjectionResult, OutputEvent, SessionPlan, TextInjector, TextProcessor,
@@ -98,7 +100,7 @@ async fn run_cloud(
         PwCapture::default(),
         CloudTransport(transport),
         pipeline.processor,
-        WtypeInjector,
+        ConfiguredInjector::new(config.inject.clone()),
         pipeline.history,
         control,
         &mut StdoutSink::new(options.json),
@@ -137,7 +139,7 @@ async fn run_local(
         PwCapture::default(),
         LocalTransport::new(recognizer),
         pipeline.processor,
-        WtypeInjector,
+        ConfiguredInjector::new(config.inject.clone()),
         pipeline.history,
         control,
         &mut StdoutSink::new(options.json),
@@ -174,11 +176,7 @@ fn build_pipeline(config: &AppConfig, options: &StreamOptions) -> Result<Pipelin
         None
     };
 
-    let prompts: Vec<(String, String)> = repository
-        .list()
-        .iter()
-        .map(|mode| (mode.id.clone(), mode.prompt.clone()))
-        .collect();
+    let prompts = crate::modes::prompt_table(repository.list(), &config.processing.prompt);
 
     Ok(Pipeline {
         mode_id: mode_id.clone(),
@@ -562,41 +560,155 @@ impl EventSink for StdoutSink {
     }
 }
 
-struct WtypeInjector;
+/// Config-driven injector: selects the wtype or clipboard method from
+/// `[inject]` and applies the clipboard fallback when wtype fails.
+pub struct ConfiguredInjector {
+    config: InjectConfig,
+}
 
-impl TextInjector for WtypeInjector {
+impl ConfiguredInjector {
+    pub fn new(config: InjectConfig) -> Self {
+        Self { config }
+    }
+}
+
+impl TextInjector for ConfiguredInjector {
     async fn inject(&mut self, text: &str) -> InjectionResult {
-        inject_via_wtype(text).await
+        inject_text(&self.config, text).await
     }
 }
 
-/// Inject text through `wtype`. Shared by the streaming session and the
-/// batch transcribe/record commands. Returns a failure result (never an
-/// error) when wtype is missing, fails or times out.
-pub async fn inject_via_wtype(text: &str) -> InjectionResult {
-    let child = Command::new("wtype")
-        .arg("--")
-        .arg(text)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn();
-    let child = match child {
-        Ok(child) => child,
-        Err(error) => return wtype_result(false, &error.to_string()),
+/// Inject `text` following the `[inject]` configuration: `prefer` selects
+/// the primary method and `clipboard_fallback` retries through the
+/// clipboard when the primary wtype path fails. The clipboard method copies
+/// the text with `wl-copy` and synthesizes a paste keypress, so apps whose
+/// input method (Fcitx5) reinterprets typed keys receive the text verbatim.
+pub async fn inject_text(config: &InjectConfig, text: &str) -> InjectionResult {
+    let prefer_clipboard = config.prefer == "clipboard";
+    let result = if prefer_clipboard {
+        inject_via_clipboard(config, text).await
+    } else {
+        inject_via_wtype_with(config, text).await
     };
-    match timeout(Duration::from_secs(1), child.wait_with_output()).await {
-        Ok(Ok(output)) if output.status.success() => wtype_result(true, ""),
-        Ok(Ok(output)) => wtype_result(false, String::from_utf8_lossy(&output.stderr).trim()),
-        Ok(Err(error)) => wtype_result(false, &error.to_string()),
-        Err(_) => wtype_result(false, "wtype timed out"),
+    if !result.ok && config.clipboard_fallback && !prefer_clipboard {
+        let fallback = inject_via_clipboard(config, text).await;
+        if fallback.ok {
+            return fallback;
+        }
+    }
+    result
+}
+
+/// Inject text through `wtype` with default settings. Newlines are typed as
+/// Shift+Enter so a chat input breaks the line without submitting.
+pub async fn inject_via_wtype(text: &str) -> InjectionResult {
+    inject_via_wtype_with(&InjectConfig::default(), text).await
+}
+
+async fn inject_via_wtype_with(config: &InjectConfig, text: &str) -> InjectionResult {
+    for args in wtype_invocations(text) {
+        let result = run_command(&config.wtype_command, &args, Duration::from_secs(1)).await;
+        if let Err(message) = result {
+            return method_result(false, "wtype", &message);
+        }
+    }
+    method_result(true, "wtype", "")
+}
+
+/// Inject text via the clipboard: copy with `wl-copy`, optionally mirror it
+/// to the X11 clipboard for XWayland apps (satellite does not forward
+/// Wayland selections), then synthesize the paste keypress with `wtype`
+/// using the `paste_command` arguments.
+async fn inject_via_clipboard(config: &InjectConfig, text: &str) -> InjectionResult {
+    let limit = Duration::from_secs_f64(config.timeout_seconds.max(0.1));
+    if let Err(message) =
+        run_command_with_stdin(&config.wl_copy_command, &[], text, false, limit).await
+    {
+        return method_result(false, "clipboard", &message);
+    }
+    if !config.x11_clipboard_command.trim().is_empty() {
+        // Best effort: XWayland apps (WeChat) read the X11 clipboard, which
+        // rootless Xwayland does not forward from Wayland. A failure here
+        // must not fail the injection.
+        let _ = run_command_with_stdin(
+            &config.x11_clipboard_command,
+            &[],
+            text,
+            false,
+            Duration::from_secs(1),
+        )
+        .await;
+    }
+    let paste_args: Vec<&str> = config.paste_command.split_whitespace().collect();
+    match run_command(&config.wtype_command, &paste_args, Duration::from_secs(1)).await {
+        Ok(()) => method_result(true, "clipboard", ""),
+        Err(message) => method_result(false, "clipboard", &message),
     }
 }
 
-fn wtype_result(ok: bool, message: &str) -> InjectionResult {
+/// Build the `wtype` invocations for `text`: each line is typed literally and
+/// each newline becomes a Shift+Enter keypress.
+pub fn wtype_invocations(text: &str) -> Vec<Vec<&str>> {
+    let mut invocations = Vec::new();
+    for (index, line) in text.split('\n').enumerate() {
+        if index > 0 {
+            invocations.push(vec!["-M", "shift", "-k", "Return"]);
+        }
+        invocations.push(vec!["--", line]);
+    }
+    invocations
+}
+
+async fn run_command(command: &str, args: &[&str], limit: Duration) -> Result<(), String> {
+    run_command_with_stdin(command, args, "", true, limit).await
+}
+
+async fn run_command_with_stdin(
+    command: &str,
+    args: &[&str],
+    stdin_text: &str,
+    piped_stderr: bool,
+    limit: Duration,
+) -> Result<(), String> {
+    let mut parts = command.split_whitespace();
+    let program = match parts.next().filter(|name| !name.is_empty()) {
+        Some(name) => name,
+        None => return Err("empty command".to_owned()),
+    };
+    let mut child = Command::new(program)
+        .args(parts.chain(args.iter().copied()))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(if piped_stderr {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
+        .spawn()
+        .map_err(|error| format!("{program}: {error}"))?;
+    if let Some(stdin) = child.stdin.as_mut() {
+        let _ = stdin.write_all(stdin_text.as_bytes()).await;
+    }
+    child.stdin.take();
+    match timeout(limit, child.wait_with_output()).await {
+        Ok(Ok(output)) if output.status.success() => Ok(()),
+        Ok(Ok(output)) => {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+            Err(if stderr.is_empty() {
+                format!("{command} failed")
+            } else {
+                stderr
+            })
+        }
+        Ok(Err(error)) => Err(format!("{command}: {error}")),
+        Err(_) => Err(format!("{command} timed out")),
+    }
+}
+
+fn method_result(ok: bool, method: &str, message: &str) -> InjectionResult {
     InjectionResult {
         ok,
-        method: "wtype".to_owned(),
+        method: method.to_owned(),
         message: message.to_owned(),
     }
 }

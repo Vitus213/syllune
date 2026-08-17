@@ -46,3 +46,18 @@ fn doctor_runs_without_python_or_model_files() {
     let stdout = String::from_utf8(output.stdout).expect("doctor output should be UTF-8");
     assert!(stdout.contains("Syllune"));
 }
+
+#[test]
+fn daemon_accepts_a_mode_argument() {
+    let output = syllune()
+        .args(["daemon", "--help"])
+        .output()
+        .expect("syllune binary should be runnable");
+
+    assert!(output.status.success());
+    let help = String::from_utf8(output.stdout).expect("daemon help should be UTF-8");
+    assert!(
+        help.contains("--mode"),
+        "daemon help should list --mode, got {help}"
+    );
+}

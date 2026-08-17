@@ -1,6 +1,7 @@
 //! Contract tests for `syllune history serve`: embedded console page,
 //! JSON endpoints, audio streaming with Range support and id validation.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use syllune::capture::wav_header;
@@ -14,6 +15,7 @@ struct Fixture {
     base: String,
     _server: tokio::task::JoinHandle<Result<i32, String>>,
     _root: tempfile::TempDir,
+    config_path: PathBuf,
 }
 
 fn entry(final_text: &str) -> HistoryEntry {
@@ -41,6 +43,7 @@ fn wav_bytes() -> Vec<u8> {
 async fn start_server(with_audio: bool) -> (Fixture, String) {
     let root = tempdir().expect("temporary root");
     let store_path = root.path().join("history.sqlite3");
+    let config_path = root.path().join("config.toml");
     let store = HistoryStore::open(store_path).expect("open store");
 
     let mut seeded = entry("你好，夜声");
@@ -59,11 +62,12 @@ async fn start_server(with_audio: bool) -> (Fixture, String) {
         .await
         .expect("bind ephemeral port");
     let port = listener.local_addr().expect("local address").port();
-    let server = tokio::spawn(serve_listener(listener, store));
+    let server = tokio::spawn(serve_listener(listener, store, config_path.clone()));
     let fixture = Fixture {
         base: format!("http://127.0.0.1:{port}"),
         _server: server,
         _root: root,
+        config_path,
     };
     (fixture, record.id)
 }
@@ -168,7 +172,11 @@ async fn audio_endpoint_reports_gone_when_the_file_is_missing() {
 
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let port = listener.local_addr().expect("local address").port();
-    let server = tokio::spawn(serve_listener(listener, store));
+    let server = tokio::spawn(serve_listener(
+        listener,
+        store,
+        root.path().join("config.toml"),
+    ));
 
     let gone = ureq::get(&format!(
         "http://127.0.0.1:{port}/api/audio/{}.wav",
@@ -208,4 +216,35 @@ fn error_status(result: Result<ureq::Response, ureq::Error>) -> u16 {
         Err(ureq::Error::Status(status, _)) => status,
         Err(error) => panic!("transport error: {error}"),
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn prompt_endpoint_reads_default_and_saves_to_config() {
+    let (fixture, _) = start_server(true).await;
+
+    // No config file yet: GET returns the builtin type4me template.
+    let response = ureq::get(&format!("{}/api/prompt", fixture.base))
+        .call()
+        .expect("GET prompt");
+    assert_eq!(response.status(), 200);
+    let body: serde_json::Value =
+        serde_json::from_str(&response.into_string().expect("body")).expect("json body");
+    assert!(body["prompt"]
+        .as_str()
+        .unwrap_or("")
+        .contains("清晰、可执行"));
+
+    // POST persists the edited prompt to the config file.
+    let payload = serde_json::json!({ "prompt": "整理：{text}" }).to_string();
+    let posted = ureq::post(&format!("{}/api/prompt", fixture.base))
+        .set("Content-Type", "application/json")
+        .send_string(&payload)
+        .expect("POST");
+    assert_eq!(posted.status(), 200);
+    let reply: serde_json::Value =
+        serde_json::from_str(&posted.into_string().expect("body")).expect("json body");
+    assert_eq!(reply["ok"], true, "save failed: {reply:?}");
+
+    let saved = std::fs::read_to_string(&fixture.config_path).expect("config written");
+    assert!(saved.contains("整理：{text}"));
 }

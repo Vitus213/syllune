@@ -105,5 +105,7 @@ async fn main() {
         Arc::new(HistoryStore::open(root.path().join("history.sqlite3")).expect("reopen store"));
     let listener = TcpListener::bind("127.0.0.1:18792").await.expect("bind");
     println!("console-shot ready on 18792");
-    serve_listener(listener, store).await.expect("serve");
+    serve_listener(listener, store, root.path().join("config.toml"))
+        .await
+        .expect("serve");
 }

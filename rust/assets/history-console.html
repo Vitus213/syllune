@@ -206,6 +206,56 @@ canvas.wave-big { height: 64px; width: 100%; display: block; border-radius: 6px;
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+/* ---------- prompt editor ---------- */
+.prompt-editor {
+  background: var(--slate);
+  border: 1px solid var(--slate-edge);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 30px;
+}
+.prompt-editor h2 {
+  margin: 0 0 4px;
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.prompt-editor .hint { color: var(--haze); font-size: 13px; margin-bottom: 12px; }
+.prompt-editor .hint code {
+  font-family: var(--mono);
+  color: var(--gold);
+}
+.prompt-editor textarea {
+  width: 100%;
+  background: var(--ink);
+  border: 1px solid var(--slate-edge);
+  border-radius: 8px;
+  color: var(--moon);
+  font-family: var(--mono);
+  font-size: 13.5px;
+  line-height: 1.5;
+  padding: 12px 14px;
+  resize: vertical;
+  min-height: 120px;
+}
+.prompt-editor textarea:focus { outline: 2px solid var(--gold); outline-offset: 2px; }
+.prompt-actions { display: flex; align-items: center; gap: 14px; margin-top: 12px; }
+.save-btn {
+  background: var(--gold);
+  color: var(--ink);
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.save-btn:hover { filter: brightness(1.08); }
+.prompt-status { color: var(--haze); font-size: 13px; }
+.prompt-status.ok { color: #2EC27E; }
+.prompt-status.err { color: #F28B82; }
 </style>
 </head>
 <body>
@@ -220,6 +270,16 @@ canvas.wave-big { height: 64px; width: 100%; display: block; border-radius: 6px;
     </div>
     <div class="totals" id="totals"></div>
   </header>
+
+  <section class="prompt-editor">
+    <h2>转写提示词</h2>
+    <div class="hint">整理提示词模板，<code>{text}</code> 会被替换为转写正文；保存后下次语音输入立即生效。</div>
+    <textarea id="promptInput" rows="6" spellcheck="false"></textarea>
+    <div class="prompt-actions">
+      <button class="save-btn" id="promptSave">保存</button>
+      <span class="prompt-status" id="promptStatus"></span>
+    </div>
+  </section>
 
   <main id="feed"></main>
 
@@ -549,6 +609,45 @@ async function loadPage() {
   }
   loading = false;
 }
+
+/* ---------- prompt editor ---------- */
+const promptInput = document.getElementById("promptInput");
+const promptSave = document.getElementById("promptSave");
+const promptStatus = document.getElementById("promptStatus");
+
+async function loadPrompt() {
+  try {
+    const res = await fetch("/api/prompt");
+    const body = await res.json();
+    if (!res.ok || body.error) throw new Error(body.error || `HTTP ${res.status}`);
+    promptInput.value = body.prompt || "";
+  } catch (error) {
+    promptStatus.textContent = `读取失败：${error.message}`;
+    promptStatus.className = "prompt-status err";
+  }
+}
+
+async function savePrompt() {
+  promptStatus.textContent = "保存中…";
+  promptStatus.className = "prompt-status";
+  try {
+    const res = await fetch("/api/prompt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: promptInput.value })
+    });
+    const body = await res.json();
+    if (!res.ok || !body.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    promptStatus.textContent = "已保存 · 下次语音输入立即生效";
+    promptStatus.className = "prompt-status ok";
+  } catch (error) {
+    promptStatus.textContent = `保存失败：${error.message}`;
+    promptStatus.className = "prompt-status err";
+  }
+}
+
+promptSave.addEventListener("click", savePrompt);
+loadPrompt();
 
 loadTotals();
 loadPage();

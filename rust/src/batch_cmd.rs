@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 use crate::batch;
 use crate::config::load_default_config;
-use crate::coordinator::{InjectionResult, TextInjector};
-use crate::stream::inject_via_wtype;
+use crate::coordinator::TextInjector;
+use crate::stream::ConfiguredInjector;
 
 pub struct TranscribeArgs {
     pub wav: PathBuf,
@@ -61,7 +61,9 @@ pub async fn transcribe(args: TranscribeArgs) -> i32 {
     }
 
     if args.inject {
-        let injected = WtypeInjector.inject(&batch_result.text).await;
+        let injected = ConfiguredInjector::new(config.inject.clone())
+            .inject(&batch_result.text)
+            .await;
         if args.json {
             let payload = serde_json::json!({
                 "type": "finalized",
@@ -119,12 +121,4 @@ pub async fn record(args: RecordArgs) -> i32 {
     .await;
     let _ = std::fs::remove_file(&wav_path);
     code
-}
-
-struct WtypeInjector;
-
-impl TextInjector for WtypeInjector {
-    async fn inject(&mut self, text: &str) -> InjectionResult {
-        inject_via_wtype(text).await
-    }
 }

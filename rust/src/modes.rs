@@ -100,6 +100,38 @@ pub fn render_template(template: &str, text: &str, selected: &str, clipboard: &s
     output
 }
 
+/// Mode id of the builtin prompt-optimize mode; `[processing].prompt`
+/// overrides its template.
+pub const PROMPT_OPTIMIZE_ID: &str = "prompt-optimize";
+
+/// The builtin prompt-optimize template (the type4me design). This is the
+/// effective organize prompt when `[processing].prompt` is empty.
+pub fn builtin_prompt_optimize_prompt() -> String {
+    builtin_modes()
+        .into_iter()
+        .find(|mode| mode.id == PROMPT_OPTIMIZE_ID)
+        .map(|mode| mode.prompt)
+        .unwrap_or_default()
+}
+
+/// Build the (mode id, prompt template) table the pipeline consults.
+/// A non-empty `organize_prompt` replaces the builtin prompt-optimize
+/// template, keeping the dictation-organizing prompt editable without a
+/// rebuild.
+pub fn prompt_table(modes: &[Mode], organize_prompt: &str) -> Vec<(String, String)> {
+    modes
+        .iter()
+        .map(|mode| {
+            let prompt = if mode.id == PROMPT_OPTIMIZE_ID && !organize_prompt.trim().is_empty() {
+                organize_prompt.to_owned()
+            } else {
+                mode.prompt.clone()
+            };
+            (mode.id.clone(), prompt)
+        })
+        .collect()
+}
+
 pub struct ModesRepository {
     path: PathBuf,
     modes: Vec<Mode>,

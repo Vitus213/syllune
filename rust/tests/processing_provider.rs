@@ -136,3 +136,24 @@ fn none_provider_is_never_built_from_config() {
         .expect("build")
         .is_none());
 }
+
+#[test]
+fn direct_api_key_is_used_as_the_bearer() {
+    use syllune::config::ProcessingConfig;
+
+    let config = ProcessingConfig {
+        provider: "openai-compatible".to_owned(),
+        api_key: "sk-direct".to_owned(),
+        ..Default::default()
+    };
+    let processor = syllune::processing::from_config(&config)
+        .expect("build")
+        .expect("provider configured");
+
+    assert_eq!(processor.api_key, "sk-direct");
+    assert_eq!(processor.model, "deepseek-v4-flash-0731");
+    assert_eq!(
+        processor.base_url,
+        "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    );
+}

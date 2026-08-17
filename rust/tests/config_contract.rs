@@ -1,6 +1,6 @@
 use std::fs;
 
-use syllune::config::{AppConfig, ConfigError};
+use syllune::config::{AppConfig, ConfigError, ProcessingConfig};
 use tempfile::tempdir;
 
 #[test]
@@ -40,4 +40,36 @@ fn rejects_cloud_keys_in_group_readable_config_files() {
 
     let err = AppConfig::load(&path).expect_err("wide permissions must fail");
     assert!(err.to_string().contains("0600"));
+}
+
+#[test]
+fn processing_defaults_point_at_bailian_deepseek_flash() {
+    let config = ProcessingConfig::default();
+    assert_eq!(config.provider, "none");
+    assert_eq!(
+        config.base_url,
+        "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    );
+    assert_eq!(config.model, "deepseek-v4-flash-0731");
+    assert!(config.api_key.is_empty());
+    assert!(config.api_key_env.is_empty());
+}
+
+#[test]
+fn processing_accepts_a_direct_api_key() {
+    let input = "[processing]\nprovider = \"openai-compatible\"\napi_key = \"sk-direct\"\n";
+    let config = AppConfig::from_toml(input).expect("valid processing config");
+    assert_eq!(config.processing.provider, "openai-compatible");
+    assert_eq!(config.processing.api_key, "sk-direct");
+    assert_eq!(config.processing.model, "deepseek-v4-flash-0731");
+}
+
+#[test]
+fn processing_prompt_defaults_empty_and_accepts_override() {
+    let default = ProcessingConfig::default();
+    assert!(default.prompt.is_empty());
+
+    let input = "[processing]\nprompt = \"整理：{text}\"\n";
+    let config = AppConfig::from_toml(input).expect("valid prompt config");
+    assert_eq!(config.processing.prompt, "整理：{text}");
 }

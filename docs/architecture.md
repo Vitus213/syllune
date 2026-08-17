@@ -22,7 +22,7 @@
 | 产品数据 | `modes.rs`、`history.rs`、`processing.rs`、`model_cmd.rs`/`mode_cmd.rs`/`history_cmd.rs` | 模式、SQLite 历史、文本处理、模型目录 CLI |
 | 模型供应链 | `models.rs` | 固定目录、HTTPS 下载、SRI SHA-256、成员白名单、manifest、原子激活 |
 | 质量门禁 | `benchmark.rs`、`benchmark_cmd.rs`、`latency.rs`、`latency_cmd.rs` | CER 重放、p50/p95/p99 延迟门禁、版本化报告 |
-| 系统集成 | `doctor.rs`、`stream.rs`（注入） | 依赖诊断、wtype 注入 |
+| 系统集成 | `doctor.rs`、`stream.rs`（注入） | 依赖诊断、`[inject]` 配置驱动注入（wtype / 剪贴板 + X11 镜像 + 兜底） |
 | 音频保留 | `capture.rs`（`WavRecorder`） | 装饰 `AudioCapture`：chunk 镜像到 `.wav.partial`，成功会话 finalize WAV；取消/失败/空会话不留文件，镜像失败不影响主路径 |
 | Web 控制台 | `history_web.rs`、`assets/history-console.html` | `history serve`：仅回环的零依赖 HTTP/1.1，内嵌单页，`/api/records`/`/api/totals`/`/api/audio`，Range 流式 |
 | 配置 | `config.rs` | 严格 TOML、0600 密钥门禁、`syllune` XDG 根 |
@@ -40,7 +40,7 @@ flowchart LR
     T --> E[events: partial/confirmed]
     Stop[Stop / EOF] --> F[flush: tail -> finish -> final]
     F --> P[mode processing]
-    P --> I[wtype inject once]
+    P --> I[configured inject once]
     I --> H[history record]
 ```
 

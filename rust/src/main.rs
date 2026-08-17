@@ -24,7 +24,7 @@ enum Command {
     Doctor,
     Mode(ModeArgs),
     History(HistoryArgs),
-    Daemon,
+    Daemon(DaemonArgs),
     Benchmark(BenchmarkArgs),
 }
 
@@ -125,6 +125,12 @@ enum ModeAction {
     Add,
     Update,
     Remove,
+}
+
+#[derive(Debug, Args)]
+struct DaemonArgs {
+    #[arg(long, default_value = "quick")]
+    mode: String,
 }
 
 #[derive(Debug, Args)]
@@ -279,13 +285,13 @@ async fn main() {
             }
             i32::from(!all_ok)
         }
-        Command::Daemon => {
+        Command::Daemon(args) => {
             let options = syllune::stream::StreamOptions {
                 config_path: cli.config,
                 backend: None,
                 json: false,
                 inject: true,
-                mode: "quick".to_owned(),
+                mode: args.mode,
             };
             match syllune::daemon::serve(options).await {
                 Ok(()) => 0,

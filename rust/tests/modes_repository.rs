@@ -1,6 +1,6 @@
 use std::fs;
 
-use syllune::modes::{builtin_modes, render_template, ModesError, ModesRepository};
+use syllune::modes::{builtin_modes, prompt_table, render_template, ModesError, ModesRepository};
 use tempfile::tempdir;
 
 #[test]
@@ -147,5 +147,37 @@ fn template_expansion_is_single_pass_and_preserves_unknown_placeholders() {
     assert_eq!(
         render_template("no placeholders", "t", "s", "c"),
         "no placeholders"
+    );
+}
+
+#[test]
+fn prompt_table_overrides_only_prompt_optimize() {
+    let modes = builtin_modes();
+
+    // Empty override: the builtin prompt-optimize prompt stays untouched.
+    let defaults = prompt_table(&modes, "");
+    let builtin_po = defaults
+        .iter()
+        .find(|(id, _)| id == "prompt-optimize")
+        .expect("prompt-optimize present");
+    assert!(
+        builtin_po.1.contains("清晰、可执行"),
+        "type4me prompt: {builtin_po:?}"
+    );
+
+    // Non-empty override: only prompt-optimize changes, other modes keep theirs.
+    let overridden = prompt_table(&modes, "自定义：{text}");
+    let po = overridden
+        .iter()
+        .find(|(id, _)| id == "prompt-optimize")
+        .expect("prompt-optimize present");
+    assert_eq!(po.1, "自定义：{text}");
+    let polish = overridden
+        .iter()
+        .find(|(id, _)| id == "voice-polish")
+        .expect("voice-polish present");
+    assert!(
+        polish.1.contains("删除口头语"),
+        "unrelated mode kept: {polish:?}"
     );
 }
