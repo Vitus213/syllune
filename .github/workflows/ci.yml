@@ -26,9 +26,11 @@ jobs:
           sudo docker image prune --all --force || true
 
       - name: Cargo fmt
+        working-directory: rust
         run: nix develop .#cpu -c cargo fmt --check
 
       - name: Cargo tests
+        working-directory: rust
         run: nix develop .#cpu -c cargo test --all-targets
 
       - name: Flake check

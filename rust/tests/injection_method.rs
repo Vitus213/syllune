@@ -176,7 +176,11 @@ async fn clipboard_injection_restores_previous_selection() {
     let log = dir.path().join("clipboard.txt");
     write_executable(
         &dir.path().join("wl-copy"),
-        &format!("#!/bin/sh\ncat >> {}\necho >> {}\n", log.display(), log.display()),
+        &format!(
+            "#!/bin/sh\ncat >> {}\necho >> {}\n",
+            log.display(),
+            log.display()
+        ),
     );
 
     let config = config_with("clipboard", &wl_copy, &wtype);
